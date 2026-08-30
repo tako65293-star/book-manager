@@ -1,0 +1,1726 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ローカル本棚 | 読書管理</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%93%96</text></svg>">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#14161c">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="本棚">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@700;900&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* =========================================================
+   design tokens
+   背景: 夜の書斎をイメージした濃紺グレー
+   アクセント: しおり(栞)のような琥珀色 + 差し色の青緑
+========================================================= */
+:root{
+  --bg:            #14161c;
+  --bg-elevated:   #1c1f27;
+  --surface:       #232733;
+  --surface-hover: #2b303e;
+  --border:        #343a47;
+
+  --text:          #eef0f4;
+  --text-muted:    #9aa1af;
+
+  --accent:        #e8a33d;   /* しおり色 */
+  --accent-soft:   #e8a33d33;
+  --accent-2:      #5fb8b3;   /* 差し色（青緑） */
+  --danger:        #e5626b;
+
+  --font-display:  'Zen Kaku Gothic New', sans-serif;
+  --font-body:     'Noto Sans JP', sans-serif;
+
+  --radius-s: 8px;
+  --radius-m: 14px;
+  --radius-l: 22px;
+  --shadow-card: 0 6px 18px rgba(0,0,0,0.35);
+}
+
+*{ box-sizing: border-box; }
+
+img{ max-width: 100%; height: auto; }
+
+body{
+  margin:0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  min-height: 100vh;
+}
+
+@media (prefers-reduced-motion: reduce){
+  *{ animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+
+/* =========================================================
+   ヘッダー
+========================================================= */
+.app-header{
+  display:flex;
+  align-items:center;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--bg-elevated), var(--bg));
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.brand{ display:flex; align-items:center; gap:10px; }
+.brand-mark{ font-size: 26px; color: var(--accent); display:flex; }
+.brand-mark svg{ width: 28px; height: 28px; }
+.brand h1{
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 900;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.search-wrap{
+  position: relative;
+  flex: 1 1 240px;
+  max-width: 420px;
+}
+.search-icon{
+  position:absolute; left:14px; top:50%; transform:translateY(-50%);
+  color: var(--text-muted); font-size: 16px; pointer-events:none;
+}
+#searchInput{
+  width:100%;
+  padding: 10px 14px 10px 36px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+#searchInput:focus{
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+#searchInput::placeholder{ color: var(--text-muted); }
+
+/* セグメントコントロール */
+.segmented-control{
+  display:flex;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px;
+  gap: 2px;
+}
+.seg-btn{
+  border:none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 999px;
+  cursor:pointer;
+  transition: color .15s, background .15s;
+  white-space: nowrap;
+}
+.seg-btn:hover{ color: var(--text); }
+.seg-btn.is-active{
+  background: var(--accent);
+  color: #1a1305;
+  font-weight: 700;
+}
+
+/* =========================================================
+   メイン / ビュー切り替え
+========================================================= */
+main{ padding: 28px; max-width: 1280px; margin: 0 auto; }
+.view-panel{ display:none; }
+.view-panel.is-active{ display:block; }
+
+/* ---- 表紙グリッド ---- */
+#view-grid{
+  display:flex;
+  flex-wrap: wrap;
+  align-items: flex-start; /* 高さがバラバラなカード同士が、一番高いものに合わせて伸びてしまうのを防ぐ */
+}
+.grid-item{
+  width: calc(50% - 8px);
+  margin: 0 16px 16px 0;
+  box-sizing: border-box;
+}
+.grid-item:nth-child(2n){ margin-right: 0; }
+@media (min-width: 620px){
+  .grid-item{ width: calc(25% - 12px); margin-right: 16px; }
+  .grid-item:nth-child(2n){ margin-right: 16px; }
+  .grid-item:nth-child(4n){ margin-right: 0; }
+}
+.book-card{
+  background: var(--bg-elevated);
+  border-radius: var(--radius-m);
+  overflow:hidden;
+  cursor:pointer;
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--border);
+  transition: transform .18s ease, box-shadow .18s ease;
+  position: relative;
+}
+.book-card:hover{
+  transform: translateY(-4px);
+  box-shadow: 0 14px 26px rgba(0,0,0,0.45);
+}
+.book-card.is-empty{
+  cursor: default;
+  box-shadow: none;
+  border-style: dashed;
+  opacity: 0.4;
+}
+.book-card.is-empty .book-cover-wrap{ background: transparent; }
+.book-card.is-empty:hover{ transform: none; box-shadow: none; }
+.book-cover-wrap{
+  position: relative;
+  width: 100%;
+  padding-top: 150%; /* 2:3の比率をpaddingで作る（aspect-ratio非依存） */
+  background: var(--surface);
+  overflow: hidden;
+}
+.book-cover-img{
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display:block;
+}
+.book-cover-fallback{
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  padding: 10px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--text-muted);
+  background: linear-gradient(160deg, var(--surface), var(--bg-elevated));
+  box-sizing: border-box;
+}
+.book-card-body{ padding: 10px 12px 12px; }
+.book-card-title{
+  font-size: 13.5px;
+  font-weight: 700;
+  margin: 0 0 3px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.book-card-author{
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 6px;
+  white-space: nowrap;
+  overflow:hidden;
+  text-overflow: ellipsis;
+}
+.card-stars{ font-size: 12px; letter-spacing: 1px; }
+.card-stars .star{ color: var(--border); }
+.card-stars .star.is-filled{ color: var(--accent); }
+
+/* しおり（ribbon）バッジ：signature element */
+.ribbon{
+  position:absolute;
+  top:0; right: 14px;
+  width: 24px;
+  padding-top: 6px;
+  background: var(--accent);
+  color: #1a1305;
+  font-size: 11px;
+  font-weight: 700;
+  text-align:center;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 82%, 0 100%);
+  box-shadow: 0 3px 8px rgba(0,0,0,.3);
+}
+
+/* ---- リスト表示 ---- */
+.book-table{ width:100%; border-collapse: collapse; }
+.book-table th{
+  text-align:left;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.book-table td{
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  vertical-align: middle;
+}
+.book-table tr{ cursor:pointer; transition: background .12s; }
+.book-table tr:hover{ background: var(--surface); }
+.table-thumb{
+  width: 40px; height: 58px; object-fit:cover; border-radius: 4px;
+  background: var(--surface);
+}
+.col-cover{ width: 56px; }
+.col-actions{ width: 40px; }
+
+/* ---- 本棚表示（背表紙） ---- */
+#view-shelf{
+  position: relative;
+  display:flex; flex-direction: column; gap: 26px;
+  padding: 28px 22px 22px;
+  border-radius: 14px;
+  background:
+    repeating-linear-gradient(90deg, rgba(0,0,0,.14) 0 2px, transparent 2px 96px),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.025) 2px 4px, transparent 4px 96px),
+    linear-gradient(180deg, #2b2015, #19130c);
+  box-shadow: inset 0 0 50px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.04);
+}
+.shelf-mode-switch{ align-self: flex-start; }
+.shelf-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.shelf-settings-toggle{
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition: background .15s;
+}
+.shelf-settings-toggle:hover{ background: var(--surface-hover); }
+.shelf-settings-panel{
+  position: absolute;
+  top: 66px; right: 22px;
+  z-index: 5;
+  width: 240px;
+  display:flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+}
+.shelf-settings-panel[hidden]{ display: none; }
+.shelf-settings-row{
+  display:flex;
+  align-items:center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.shelf-settings-row span:first-child{ width: 88px; flex-shrink:0; }
+.shelf-settings-row input[type="range"]{ flex:1; }
+.shelf-settings-value{ width: 28px; text-align:right; color: var(--text); flex-shrink:0; }
+.shelf-row{
+  position: relative;
+  display:flex;
+  align-items:flex-end;
+  gap: 3px;
+  padding: 14px 14px 22px;
+  background: linear-gradient(180deg, transparent 80%, #00000055 80%);
+}
+.shelf-row::after{
+  content:"";
+  position:absolute; left:0; right:0; bottom: 8px; height: 14px;
+  background:
+    repeating-linear-gradient(90deg, rgba(0,0,0,.18) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.05) 0 1px, transparent 1px 11px),
+    linear-gradient(180deg, #7a4d28, #4a2c14 55%, #26150a);
+  border-radius: 3px;
+  box-shadow: 0 4px 8px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.1);
+}
+.shelf-spine{
+  position: relative;
+  z-index: 1;
+  width: 34px;
+  height: 190px;
+  border-radius: 3px 3px 2px 2px;
+  color: #fff;
+  font-size: 11px;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  display:flex;
+  align-items:center;
+  justify-content: center;
+  padding: 10px 0;
+  cursor:pointer;
+  box-shadow: inset 2px 0 0 rgba(255,255,255,.08), 2px 3px 5px rgba(0,0,0,.4);
+  transition: transform .15s;
+  overflow:hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transform: rotate(var(--tilt, 0deg));
+  transform-origin: bottom center;
+}
+.shelf-spine:hover{ transform: rotate(var(--tilt, 0deg)) translateY(-10px); }
+.shelf-spine.is-tilted{ box-shadow: inset 2px 0 0 rgba(255,255,255,.08), 3px 4px 6px rgba(0,0,0,.5); }
+.shelf-gap{
+  flex-shrink: 0;
+  align-self: flex-end;
+  height: 1px;
+}
+.shelf-label{
+  font-family: var(--font-display);
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 0 0 4px 4px;
+}
+
+/* ---- 作者マップ（ギャラクシー）表示 : signature view ---- */
+#view-galaxy{
+  display:flex;
+  flex-wrap: wrap;
+  gap: 40px;
+  justify-content: flex-start;
+}
+.galaxy-cluster{
+  position: relative;
+  border-radius: 50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.galaxy-core{
+  position:relative;
+  z-index: 3;
+  background: var(--accent);
+  color: #1a1305;
+  font-weight: 700;
+  font-family: var(--font-display);
+  border-radius: 50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  padding: 8px;
+  font-size: 13px;
+  box-shadow: 0 0 0 6px var(--accent-soft), 0 8px 20px rgba(0,0,0,.4);
+  cursor: default;
+}
+.galaxy-book{
+  position:absolute;
+  width: 46px;
+  height: 68px;
+  border-radius: 4px;
+  overflow:hidden;
+  box-shadow: 0 4px 10px rgba(0,0,0,.5);
+  cursor:pointer;
+  border: 1px solid var(--border);
+  transition: transform .18s;
+  z-index: 2;
+  background: var(--surface);
+}
+.galaxy-book:hover{ transform: scale(1.18); z-index: 5; }
+.galaxy-book img{ width:100%; height:100%; object-fit:cover; }
+.galaxy-orbit-line{
+  position:absolute;
+  background: var(--border);
+  height: 1px;
+  transform-origin: 0 50%;
+  z-index: 1;
+}
+
+/* =========================================================
+   空の状態
+========================================================= */
+.empty-state{
+  text-align:center;
+  padding: 80px 20px;
+  color: var(--text-muted);
+}
+.empty-illustration{ color: var(--text-muted); margin-bottom: 12px; display:flex; justify-content:center; }
+.empty-illustration svg{ width: 56px; height: 56px; }
+.empty-title{ font-family: var(--font-display); font-size: 18px; color: var(--text); margin: 0 0 6px; }
+.empty-sub{ font-size: 13px; margin:0; }
+
+/* =========================================================
+   FAB（追加ボタン）
+========================================================= */
+.fab{
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  color: #1a1305;
+  font-size: 28px;
+  line-height: 1;
+  cursor:pointer;
+  box-shadow: 0 10px 24px rgba(232,163,61,0.4);
+  transition: transform .15s;
+  z-index: 30;
+}
+.fab:hover{ transform: scale(1.07) rotate(90deg); }
+
+/* =========================================================
+   モーダル共通
+========================================================= */
+.modal-overlay{
+  position: fixed; inset: 0;
+  background: rgba(8,9,12,0.72);
+  backdrop-filter: blur(3px);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index: 100;
+  padding: 20px;
+}
+/* 重要：hidden属性がついている間は、上のdisplay:flexより優先して必ず非表示にする。
+   これが無いと「閉じるボタンを押しても画面が消えない」バグになる。 */
+.modal-overlay[hidden]{
+  display: none;
+}
+.modal{
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  width: 100%;
+  max-width: 640px;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+  padding: 28px;
+  box-shadow: 0 30px 60px rgba(0,0,0,0.5);
+}
+.modal-close{
+  position:absolute; top: 18px; right: 18px;
+  width: 32px; height:32px;
+  border-radius:50%;
+  border:none;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor:pointer;
+  font-size: 14px;
+}
+.modal-close:hover{ background: var(--surface-hover); color: var(--text); }
+.modal h2{ font-family: var(--font-display); font-weight: 900; margin: 0 0 18px; font-size: 20px; }
+
+/* ---- 表紙ペースト欄 ---- */
+.cover-drop{
+  position: relative;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-m);
+  min-height: 100px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin-bottom: 20px;
+  cursor:pointer;
+  transition: border-color .15s, background .15s;
+  overflow:hidden;
+}
+.cover-drop:hover, .cover-drop:focus{
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  outline:none;
+}
+.cover-placeholder{ text-align:center; color: var(--text-muted); font-size: 13px; padding: 20px; }
+.paste-icon{ font-size: 26px; display:block; margin-bottom: 6px; }
+#coverPreview{ max-height: 150px; max-width: 100%; object-fit:contain; display:block; }
+#coverPreview[hidden]{ display: none; }
+.cover-clear{
+  position:absolute; bottom: 10px; right: 10px;
+  border:none; border-radius: 999px;
+  background: rgba(0,0,0,0.6); color:#fff;
+  font-size: 12px; padding: 6px 12px; cursor:pointer;
+}
+
+/* ---- フォーム ---- */
+.form-grid{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.field-wide{ grid-column: 1 / -1; }
+.field{ display:flex; flex-direction:column; gap: 6px; }
+.field-label{ font-size: 12.5px; color: var(--text-muted); }
+.field-label em{ color: var(--accent); font-style: normal; margin-left: 4px; font-size: 11px; }
+
+input[type=text], input[type=url], input[type=date], textarea{
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  color: var(--text);
+  padding: 9px 12px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  outline:none;
+  transition: border-color .15s, box-shadow .15s;
+  resize: vertical;
+}
+input:focus, textarea:focus{
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ---- 星評価 ---- */
+.star-rating{ display:flex; align-items:center; gap: 4px; }
+.star-rating .star{
+  font-size: 24px;
+  color: var(--border);
+  cursor:pointer;
+  transition: color .1s, transform .1s;
+}
+.star-rating .star:hover{ transform: scale(1.15); }
+.star-rating .star.is-filled{ color: var(--accent); }
+.star-rating.readonly .star{ cursor:default; }
+.star-rating.readonly .star:hover{ transform:none; }
+.star-clear-btn{
+  margin-left: 8px;
+  border:none; background:none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor:pointer;
+  text-decoration: underline;
+}
+
+/* ---- モーダルフッター / ボタン共通 ---- */
+.modal-footer{ display:flex; align-items:center; gap: 10px; margin-top: 22px; }
+.footer-spacer{ flex:1; }
+.btn{
+  border:none;
+  border-radius: 999px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor:pointer;
+  font-family: var(--font-body);
+  transition: filter .15s, transform .1s;
+}
+.btn:active{ transform: scale(0.97); }
+.btn-primary{ background: var(--accent); color: #1a1305; }
+.btn-primary:hover{ filter: brightness(1.08); }
+.btn-ghost{ background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+.btn-ghost:hover{ background: var(--surface-hover); }
+.btn-danger{ background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+.btn-danger:hover{ background: rgba(229,98,107,0.12); }
+
+/* =========================================================
+   詳細パネル
+========================================================= */
+.detail-modal{ max-width: 720px; }
+.detail-layout{ display:flex; gap: 26px; flex-wrap: wrap; }
+.detail-cover{
+  width: 130px;
+  aspect-ratio: 2/3;
+  object-fit:cover;
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+.detail-info{ flex: 1 1 260px; min-width: 220px; }
+.detail-date{ color: var(--text-muted); font-size: 12px; margin: 0 0 4px; }
+.detail-info h2{ margin: 0 0 4px; font-size: 22px; }
+.detail-author{ color: var(--text-muted); margin: 0 0 10px; font-size: 14px; }
+.detail-url{
+  display:inline-block;
+  margin: 10px 0;
+  color: var(--accent-2);
+  font-size: 13px;
+  text-decoration:none;
+}
+.detail-url:hover{ text-decoration: underline; }
+.detail-tags{ display:flex; flex-wrap:wrap; gap: 6px; margin: 10px 0; }
+.tag-chip{
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11.5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.detail-memo{
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--text);
+  white-space: pre-wrap;
+  background: var(--surface);
+  padding: 12px 14px;
+  border-radius: var(--radius-s);
+  margin: 10px 0 0;
+}
+.detail-actions{ display:flex; flex-wrap:wrap; gap: 10px; margin-top: 18px; }
+
+/* =========================================================
+   トースト
+========================================================= */
+.toast{
+  position: fixed;
+  left: 50%;
+  bottom: 30px;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 12px 22px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.4);
+  z-index: 200;
+  animation: toast-in .2s ease;
+}
+@keyframes toast-in{ from{ opacity:0; transform: translate(-50%, 10px);} to{ opacity:1; transform: translate(-50%,0);} }
+
+/* =========================================================
+   レスポンシブ
+========================================================= */
+@media (max-width: 640px){
+  .app-header{ padding: 14px 16px; }
+  main{ padding: 18px; }
+  .form-grid{ grid-template-columns: 1fr; }
+}
+
+/* キーボードフォーカスの可視化 */
+button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:focus-visible{
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+</style>
+</head>
+<body>
+
+<!-- ============ ヘッダー ============ -->
+<header class="app-header">
+  <div class="brand">
+    <span class="brand-mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 5.2c2.3-1 4.7-1 6.9 0 1 .45 1.9 1.05 2.7 1.8v11.3c-2.9-2-6.4-2.3-9.6-1V5.2z"/>
+        <path d="M22 5.2c-2.3-1-4.7-1-6.9 0-1 .45-1.9 1.05-2.7 1.8v11.3c2.9-2 6.4-2.3 9.6-1V5.2z"/>
+      </svg>
+    </span>
+    <h1>ローカル本棚</h1>
+  </div>
+
+  <div class="search-wrap">
+    <span class="search-icon">⌕</span>
+    <input type="text" id="searchInput" placeholder="タイトル・作者・タグで検索…" autocomplete="off">
+  </div>
+
+  <!-- セグメントコントロール（表示切り替え） -->
+  <div class="segmented-control" id="viewSwitch" role="tablist">
+    <button class="seg-btn is-active" data-view="grid" role="tab">表紙</button>
+    <button class="seg-btn" data-view="list" role="tab">リスト</button>
+    <button class="seg-btn" data-view="shelf" role="tab">本棚</button>
+    <button class="seg-btn" data-view="galaxy" role="tab">作者マップ</button>
+  </div>
+</header>
+
+<!-- ============ メインコンテンツ ============ -->
+<main id="mainContent">
+
+  <!-- 表紙グリッド表示 -->
+  <section id="view-grid" class="view-panel is-active"></section>
+
+  <!-- リスト表示 -->
+  <section id="view-list" class="view-panel">
+    <table class="book-table">
+      <thead>
+        <tr>
+          <th class="col-cover"></th>
+          <th>タイトル</th>
+          <th>作者</th>
+          <th>評価</th>
+          <th>追加日</th>
+          <th class="col-actions"></th>
+        </tr>
+      </thead>
+      <tbody id="listTableBody"></tbody>
+    </table>
+  </section>
+
+  <!-- 本棚表示（背表紙が並ぶ） -->
+  <section id="view-shelf" class="view-panel">
+    <div class="shelf-toolbar">
+      <div class="shelf-mode-switch segmented-control" id="shelfModeSwitch" role="tablist">
+        <button class="seg-btn is-active" data-mode="author" role="tab">作者ごと</button>
+        <button class="seg-btn" data-mode="mixed" role="tab">ごちゃまぜ</button>
+      </div>
+      <button class="shelf-settings-toggle" id="shelfSettingsToggle" type="button" aria-label="表示調整">⚙</button>
+    </div>
+    <div id="shelfSettingsPanel" class="shelf-settings-panel" hidden>
+      <label class="shelf-settings-row">
+        <span>色のばらつき</span>
+        <input type="range" id="shelfColorVariance" min="0" max="100" step="5">
+        <span class="shelf-settings-value" id="shelfColorVarianceValue"></span>
+      </label>
+      <label class="shelf-settings-row">
+        <span>隙間の量</span>
+        <input type="range" id="shelfGapAmount" min="0" max="100" step="5">
+        <span class="shelf-settings-value" id="shelfGapAmountValue"></span>
+      </label>
+      <label class="shelf-settings-row">
+        <span>傾ける確率</span>
+        <input type="range" id="shelfTiltChance" min="0" max="100" step="5">
+        <span class="shelf-settings-value" id="shelfTiltChanceValue"></span>
+      </label>
+    </div>
+    <div id="shelfRows"></div>
+  </section>
+
+  <!-- 作者マップ表示（作者を中心に本が円状に浮かぶ） -->
+  <section id="view-galaxy" class="view-panel"></section>
+
+  <!-- 何もない時 -->
+  <div id="emptyState" class="empty-state" hidden>
+    <div class="empty-illustration">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 5.2c2.3-1 4.7-1 6.9 0 1 .45 1.9 1.05 2.7 1.8v11.3c-2.9-2-6.4-2.3-9.6-1V5.2z"/>
+        <path d="M22 5.2c-2.3-1-4.7-1-6.9 0-1 .45-1.9 1.05-2.7 1.8v11.3c2.9-2 6.4-2.3 9.6-1V5.2z"/>
+      </svg>
+    </div>
+    <p class="empty-title">まだ本が登録されていません</p>
+    <p class="empty-sub">右下の「＋」から本を追加すると、ここに並びます。</p>
+  </div>
+
+</main>
+
+<!-- ============ 追加ボタン（FAB） ============ -->
+<button id="fabAdd" class="fab" title="本を追加">＋</button>
+
+<!-- ============ 追加・編集モーダル ============ -->
+<div id="bookModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <button class="modal-close" id="modalClose" aria-label="閉じる">✕</button>
+    <h2 id="modalTitle">本を追加</h2>
+
+    <div class="modal-body">
+
+      <!-- 表紙画像 ペースト欄 -->
+      <div class="cover-drop" id="coverDrop" tabindex="0">
+        <img id="coverPreview" alt="表紙プレビュー" hidden>
+        <div class="cover-placeholder" id="coverPlaceholder">
+          <span class="paste-icon">🖼️</span>
+          <p>ここをクリックして<br><strong>Ctrl(⌘)+V</strong> で表紙画像を貼り付け</p>
+        </div>
+        <button class="cover-clear" id="coverClear" hidden>画像を削除</button>
+      </div>
+
+      <div class="form-grid">
+        <label class="field">
+          <span class="field-label">タイトル <em>必須</em></span>
+          <input type="text" id="inputTitle" placeholder="例）アルジャーノンに花束を">
+        </label>
+
+        <label class="field">
+          <span class="field-label">作者</span>
+          <input type="text" id="inputAuthor" placeholder="例）ダニエル・キイス">
+        </label>
+
+        <div class="field">
+          <span class="field-label">評価</span>
+          <div class="star-rating" id="starRating" data-value="0">
+            <span class="star" data-value="1">★</span>
+            <span class="star" data-value="2">★</span>
+            <span class="star" data-value="3">★</span>
+            <span class="star" data-value="4">★</span>
+            <span class="star" data-value="5">★</span>
+            <button type="button" id="starClear" class="star-clear-btn">クリア</button>
+          </div>
+        </div>
+
+        <label class="field">
+          <span class="field-label">関連URL（販売ページ・レビューなど）</span>
+          <input type="url" id="inputUrl" placeholder="https://…">
+        </label>
+
+        <label class="field">
+          <span class="field-label">タグ（カンマ区切り）</span>
+          <input type="text" id="inputTags" placeholder="例）SF, 泣ける, 文庫">
+        </label>
+
+        <label class="field field-wide">
+          <span class="field-label">メモ・感想</span>
+          <textarea id="inputMemo" rows="4" placeholder="感想やメモを自由に書けます"></textarea>
+        </label>
+
+        <div class="field">
+          <span class="field-label">追加日（自動記録・編集可）</span>
+          <input type="date" id="inputDate">
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button id="deleteBookBtn" class="btn btn-danger" hidden>削除</button>
+      <div class="footer-spacer"></div>
+      <button id="cancelBtn" class="btn btn-ghost">キャンセル</button>
+      <button id="saveBtn" class="btn btn-primary">保存する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 本の詳細パネル ============ -->
+<div id="detailModal" class="modal-overlay" hidden>
+  <div class="modal detail-modal">
+    <button class="modal-close" id="detailClose" aria-label="閉じる">✕</button>
+    <div class="detail-layout">
+      <img id="detailCover" class="detail-cover" alt="表紙">
+      <div class="detail-info">
+        <p class="detail-date" id="detailDate"></p>
+        <h2 id="detailTitle"></h2>
+        <p class="detail-author" id="detailAuthor"></p>
+        <div class="star-rating readonly" id="detailStars"></div>
+        <a id="detailUrl" class="detail-url" target="_blank" rel="noopener">🔗 関連リンクを開く</a>
+        <div class="detail-tags" id="detailTags"></div>
+        <p class="detail-memo" id="detailMemo"></p>
+
+        <div class="detail-actions">
+          <button id="detailEditBtn" class="btn btn-primary">編集する</button>
+          <button id="detailShareBtn" class="btn btn-ghost">共有</button>
+          <button id="detailCopyBtn" class="btn btn-ghost">コピーして複製</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- トースト通知 -->
+<div id="toast" class="toast" hidden></div>
+
+<script>
+/* =========================================================
+   ローカル本棚 - script.js
+   すべてのデータはブラウザの localStorage に保存されます。
+   （＝このパソコン・このブラウザだけに残る、自分専用の本棚です）
+========================================================= */
+
+const STORAGE_KEY = "localBookshelf.books.v1";
+const SHELF_SETTINGS_KEY = "localBookshelf.shelfSettings.v1";
+const SHELF_SETTINGS_DEFAULTS = {
+  colorVariance: 100, // 色のばらつき：0で単色寄り、100で今までどおりの幅
+  gapAmount: 50,       // 隙間の量：0でなし、100で最大
+  tiltChance: 50,      // 傾ける確率：0でなし、100で最大
+};
+
+/** アプリ全体の状態 */
+const state = {
+  books: [],          // 保存されている本の配列
+  currentView: "grid", // grid / list / shelf / galaxy
+  shelfMode: "author", // author / mixed（本棚表示の並べ方）
+  searchTerm: "",
+  editingId: null,     // モーダルで編集中の本のID（新規追加時はnull）
+  pendingCoverData: null, // モーダルで貼り付けた画像（base64）
+  shelfSettings: { ...SHELF_SETTINGS_DEFAULTS },
+};
+
+/* =========================================================
+   データの読み書き
+========================================================= */
+function loadShelfSettings() {
+  try {
+    const raw = localStorage.getItem(SHELF_SETTINGS_KEY);
+    state.shelfSettings = raw
+      ? { ...SHELF_SETTINGS_DEFAULTS, ...JSON.parse(raw) }
+      : { ...SHELF_SETTINGS_DEFAULTS };
+  } catch (e) {
+    console.error("本棚表示設定の読み込みに失敗しました", e);
+    state.shelfSettings = { ...SHELF_SETTINGS_DEFAULTS };
+  }
+}
+
+function saveShelfSettings() {
+  localStorage.setItem(SHELF_SETTINGS_KEY, JSON.stringify(state.shelfSettings));
+}
+function loadBooks() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    state.books = raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.error("本のデータの読み込みに失敗しました", e);
+    state.books = [];
+  }
+}
+
+function saveBooks() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.books));
+}
+
+function generateId() {
+  return "b_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+}
+
+function todayISO() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function formatDateJP(iso) {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${y}年${Number(m)}月${Number(d)}日`;
+}
+
+/* =========================================================
+   検索フィルター
+========================================================= */
+function getVisibleBooks() {
+  const term = state.searchTerm.trim().toLowerCase();
+  if (!term) return state.books;
+  return state.books.filter((b) => {
+    const haystack = [
+      b.title || "",
+      b.author || "",
+      (b.tags || []).join(" "),
+      b.memo || "",
+    ]
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(term);
+  });
+}
+
+/* =========================================================
+   星評価の表示用HTML文字列を作る
+========================================================= */
+function starsHTML(rating) {
+  let out = "";
+  for (let i = 1; i <= 5; i++) {
+    out += `<span class="star ${i <= rating ? "is-filled" : ""}">★</span>`;
+  }
+  return out;
+}
+
+/* =========================================================
+   描画：全体の入り口
+========================================================= */
+function renderAll() {
+  const visible = getVisibleBooks();
+  const empty = document.getElementById("emptyState");
+  const main = document.getElementById("mainContent");
+
+  if (state.books.length === 0) {
+    empty.hidden = false;
+    main.querySelectorAll(".view-panel").forEach((p) => (p.style.display = "none"));
+    return;
+  }
+  empty.hidden = true;
+  main.querySelectorAll(".view-panel").forEach((p) => {
+    // 表示するパネルは "" にしてCSS側の指定(flexやblockなど)に任せる。
+    // ここで無理に "block" を入れると、CSSでdisplay:flexにしても
+    // インラインスタイルの方が強く効いてしまい、横並びにならないバグの原因になる。
+    // is-activeクラスもトグルしておく：表紙・本棚・作者マップは自分専用のCSS(display:flex等)を
+    // 持っているのでこれが無くても表示されるが、リスト表示は専用CSSが無いため、
+    // .view-panel.is-active{ display:block } のルールに頼って表示される。
+    const isActive = p.id === `view-${state.currentView}`;
+    p.classList.toggle("is-active", isActive);
+    p.style.display = isActive ? "" : "none";
+  });
+
+  renderGrid(visible);
+  renderList(visible);
+  renderShelf(visible);
+  renderGalaxy(visible);
+}
+
+/* ---------------------------------------------------------
+   1) 表紙グリッド表示
+--------------------------------------------------------- */
+function renderGrid(books) {
+  const el = document.getElementById("view-grid");
+  el.innerHTML = "";
+  books.forEach((book) => {
+    const card = document.createElement("div");
+    card.className = "book-card grid-item";
+    card.addEventListener("click", () => openDetail(book.id));
+
+    const ribbon = book.rating > 0 ? `<div class="ribbon">${book.rating}</div>` : "";
+    const coverPart = book.cover
+      ? `<img class="book-cover-img" src="${book.cover}" alt="${escapeHTML(book.title)}の表紙">`
+      : `<div class="book-cover-fallback">${escapeHTML(book.title || "無題")}</div>`;
+
+    card.innerHTML = `
+      ${ribbon}
+      <div class="book-cover-wrap">${coverPart}</div>
+      <div class="book-card-body">
+        <p class="book-card-title">${escapeHTML(book.title || "無題")}</p>
+        <p class="book-card-author">${escapeHTML(book.author || "作者不明")}</p>
+        <div class="card-stars">${starsHTML(book.rating)}</div>
+      </div>
+    `;
+    el.appendChild(card);
+  });
+
+  // 現在の列数（620px以上なら4列、それ未満は2列）に合わせて、最後の段の余りマスを薄いグレーの空き枠で埋める
+  // 本物のカードと全く同じ構造(book-cover-wrap + book-card-body)で作ることで、
+  // サイズ計算のズレが起きないようにしている
+  const columnCount = window.innerWidth >= 620 ? 4 : 2;
+  const remainder = books.length % columnCount;
+  if (books.length > 0 && remainder !== 0) {
+    const emptyCount = columnCount - remainder;
+    for (let i = 0; i < emptyCount; i++) {
+      const empty = document.createElement("div");
+      empty.className = "book-card grid-item is-empty";
+      empty.innerHTML = `
+        <div class="book-cover-wrap"></div>
+        <div class="book-card-body">
+          <p class="book-card-title">&nbsp;</p>
+          <p class="book-card-author">&nbsp;</p>
+          <div class="card-stars">&nbsp;</div>
+        </div>
+      `;
+      el.appendChild(empty);
+    }
+  }
+}
+
+/* ---------------------------------------------------------
+   2) リスト表示
+--------------------------------------------------------- */
+function renderList(books) {
+  const tbody = document.getElementById("listTableBody");
+  tbody.innerHTML = "";
+  books
+    .slice()
+    .sort((a, b) => (b.dateAdded || "").localeCompare(a.dateAdded || ""))
+    .forEach((book) => {
+      const tr = document.createElement("tr");
+      tr.addEventListener("click", () => openDetail(book.id));
+      const thumb = book.cover
+        ? `<img class="table-thumb" src="${book.cover}">`
+        : `<div class="table-thumb"></div>`;
+      tr.innerHTML = `
+        <td>${thumb}</td>
+        <td>${escapeHTML(book.title || "無題")}</td>
+        <td>${escapeHTML(book.author || "—")}</td>
+        <td><span class="card-stars">${starsHTML(book.rating)}</span></td>
+        <td>${formatDateJP(book.dateAdded)}</td>
+        <td></td>
+      `;
+      tbody.appendChild(tr);
+    });
+}
+
+/* ---------------------------------------------------------
+   3) 本棚表示（背表紙が一段に並ぶ）
+--------------------------------------------------------- */
+function renderShelf(books) {
+  const el = document.getElementById("shelfRows");
+  el.innerHTML = "";
+
+  if (state.shelfMode === "mixed") {
+    // ごちゃまぜ：作者を無視して順番に並べ、8冊ごとに1つの棚に区切る
+    const chunkSize = 8;
+    for (let i = 0; i < books.length; i += chunkSize) {
+      const chunk = books.slice(i, i + chunkSize);
+      const wrap = document.createElement("div");
+      const row = document.createElement("div");
+      row.className = "shelf-row";
+      chunk.forEach((book, i) => appendSpineWithVariation(row, book, i, chunk.length));
+      wrap.appendChild(row);
+      el.appendChild(wrap);
+    }
+  } else {
+    // 作者ごとに1段の棚として並べる
+    const groups = groupByAuthor(books);
+    Object.keys(groups)
+      .sort((a, b) => a.localeCompare(b, "ja"))
+      .forEach((author) => {
+        const wrap = document.createElement("div");
+        const label = document.createElement("p");
+        label.className = "shelf-label";
+        label.textContent = author;
+        wrap.appendChild(label);
+
+        const row = document.createElement("div");
+        row.className = "shelf-row";
+        groups[author].forEach((book, i) => appendSpineWithVariation(row, book, i, groups[author].length));
+        wrap.appendChild(row);
+        el.appendChild(wrap);
+      });
+  }
+}
+
+/* 文字列から決定的なハッシュ値を作る共通関数
+   （同じ本・同じ棚位置なら毎回同じ見た目になるようにするため） */
+function hashString(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return Math.abs(hash);
+}
+
+/* 背表紙を1冊分棚に並べる。まれに傾いた本や、本と本の間の隙間を混ぜて
+   「詰まりすぎていない、少し崩れた本棚」の雰囲気を出す。
+   ただし1段の冊数が少ないと不自然に目立つので、その場合は変化を入れない */
+function appendSpineWithVariation(row, book, index, total) {
+  const seed = (book.id || book.title || "") + "-" + index;
+  row.appendChild(createSpine(book, seed, total));
+
+  if (total !== undefined && total < 6) return;
+
+  const gapAmount = state.shelfSettings ? state.shelfSettings.gapAmount : 50; // 0〜100
+  const gapChance = Math.round(gapAmount * 0.16); // 100で16%、50で8%、0で0%
+  const gapHash = hashString(seed + "-gap");
+  if (gapChance > 0 && gapHash % 100 < gapChance) {
+    const gap = document.createElement("div");
+    gap.className = "shelf-gap";
+    const widthRange = Math.round((gapAmount / 100) * 38); // 100で最大46px幅、50で27px幅
+    gap.style.width = 8 + (gapHash % (widthRange + 1)) + "px";
+    row.appendChild(gap);
+  }
+}
+
+/* 本ごとに背表紙の高さ・太さを少しずつ変えて、本物の本棚っぽくする
+   （同じ本は毎回同じ見た目になるよう、IDから決定的に計算する） */
+function spineDimensions(seedStr) {
+  const h = hashString(seedStr);
+  const heightVariance = (h % 36) - 18; // 高さ ±18px
+  const widthVariance = (Math.floor(h / 36) % 20) - 8; // 太さ -8〜+11px
+  return {
+    height: 190 + heightVariance,
+    width: 34 + widthVariance,
+  };
+}
+
+function createSpine(book, seed, total) {
+  const spine = document.createElement("div");
+  spine.className = "shelf-spine";
+  spine.style.background = colorFromString(book.title || book.id);
+  const dim = spineDimensions(book.id || book.title || "");
+  spine.style.height = dim.height + "px";
+  spine.style.width = dim.width + "px";
+  spine.textContent = book.title || "無題";
+  spine.title = book.title;
+
+  // 一部の本だけ、寄りかかったように少し傾ける（冊数が少ない棚では省略）
+  const enoughBooks = total === undefined || total >= 6;
+  const tiltChanceSetting = state.shelfSettings ? state.shelfSettings.tiltChance : 50; // 0〜100
+  const tiltChance = Math.round(tiltChanceSetting * 0.2); // 100で20%、50で10%、0で0%
+  const tiltHash = hashString((seed || book.id || book.title || "") + "-tilt");
+  if (enoughBooks && tiltChance > 0 && tiltHash % 100 < tiltChance) {
+    const angle = ((tiltHash >> 3) % 9) - 3; // -3〜+5度くらい（控えめに）
+    spine.style.setProperty("--tilt", angle + "deg");
+    // 傾けた分だけ本の上端が横にはみ出すので、その量を計算して
+    // 隣の本とぶつからないよう自動で余白を確保する
+    const overhang = Math.abs(dim.height * Math.sin((angle * Math.PI) / 180));
+    const margin = Math.ceil(overhang) + 4;
+    spine.style.margin = `0 ${margin}px`;
+    spine.classList.add("is-tilted");
+  }
+
+  spine.addEventListener("click", () => openDetail(book.id));
+  return spine;
+}
+
+/* ---------------------------------------------------------
+   4) 作者マップ表示（作者を中心に本が円状に浮かぶ）
+      フォルダ分けではなく、視覚的な「星座」として見せる
+--------------------------------------------------------- */
+function renderGalaxy(books) {
+  const el = document.getElementById("view-galaxy");
+  el.innerHTML = "";
+
+  const groups = groupByAuthor(books);
+  const bookSize = 46;   // .galaxy-book のサイズ
+  const coreSize = 90;
+
+  Object.keys(groups)
+    .sort((a, b) => groups[b].length - groups[a].length)
+    .forEach((author) => {
+      const items = groups[author];
+      const radius = Math.min(60 + items.length * 16, 160);
+      const size = radius * 2 + bookSize + 20;
+
+      const cluster = document.createElement("div");
+      cluster.className = "galaxy-cluster";
+      cluster.style.width = size + "px";
+      cluster.style.height = size + "px";
+
+      const center = size / 2;
+
+      // 軌道の線
+      items.forEach((book, i) => {
+        const angle = (2 * Math.PI * i) / items.length - Math.PI / 2;
+        const line = document.createElement("div");
+        line.className = "galaxy-orbit-line";
+        line.style.width = radius + "px";
+        line.style.left = center + "px";
+        line.style.top = center + "px";
+        line.style.transform = `rotate(${angle}rad)`;
+        cluster.appendChild(line);
+      });
+
+      // 中心（作者名）
+      const core = document.createElement("div");
+      core.className = "galaxy-core";
+      core.style.width = coreSize + "px";
+      core.style.height = coreSize + "px";
+      core.style.position = "absolute";
+      core.style.left = center + "px";
+      core.style.top = center + "px";
+      core.style.transform = "translate(-50%, -50%)";
+      core.innerHTML = `${escapeHTML(author)}<br><small style="opacity:.7">${items.length}冊</small>`;
+      cluster.appendChild(core);
+
+      // 本（円周上に配置）
+      items.forEach((book, i) => {
+        const angle = (2 * Math.PI * i) / items.length - Math.PI / 2;
+        const x = center + radius * Math.cos(angle) - bookSize / 2;
+        const y = center + radius * Math.sin(angle) - (bookSize * 1.45) / 2;
+
+        const bEl = document.createElement("div");
+        bEl.className = "galaxy-book";
+        bEl.style.left = x + "px";
+        bEl.style.top = y + "px";
+        bEl.style.height = bookSize * 1.45 + "px";
+        bEl.title = book.title;
+        bEl.innerHTML = book.cover
+          ? `<img src="${book.cover}">`
+          : `<div class="book-cover-fallback" style="font-size:9px;padding:2px;">${escapeHTML(book.title)}</div>`;
+        bEl.addEventListener("click", () => openDetail(book.id));
+        cluster.appendChild(bEl);
+      });
+
+      el.appendChild(cluster);
+    });
+}
+
+function groupByAuthor(books) {
+  const groups = {};
+  books.forEach((b) => {
+    const key = (b.author || "").trim() || "作者不明";
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(b);
+  });
+  return groups;
+}
+
+/* 文字列から安定した色を生成（背表紙の色分け用）
+   臙脂・レンガ・琥珀・からし・焦茶など、落ち着いた暖色系のパレットに限定して
+   まとまりを出しつつ、色相・彩度・明度を少しずつ揺らして単調になりすぎないようにする */
+const SHELF_PALETTE = [
+  { h: 4,  s: 55, l: 30 },  // 深い臙脂
+  { h: 12, s: 62, l: 38 },  // レンガ色
+  { h: 22, s: 50, l: 28 },  // 焦茶
+  { h: 32, s: 58, l: 40 },  // 琥珀
+  { h: 42, s: 55, l: 44 },  // からし色
+  { h: 18, s: 40, l: 22 },  // ダークブラウン
+];
+
+function colorFromString(str) {
+  const h = hashString(str);
+  // variance: 0（単色寄り）〜1（今までどおりの幅）
+  const variance = (state.shelfSettings ? state.shelfSettings.colorVariance : 100) / 100;
+  const paletteCount = Math.max(1, Math.round(variance * (SHELF_PALETTE.length - 1)) + 1);
+  const base = SHELF_PALETTE[h % paletteCount];
+  const jitter = (bits, mod) => (((h >> bits) % mod) / (mod - 1)) * 2 - 1; // -1〜1
+  const hue = base.h + jitter(4, 11) * 3 * variance;
+  const sat = base.s + jitter(8, 11) * 5 * variance;
+  const light = base.l + jitter(12, 11) * 5 * variance;
+  return `hsl(${hue}, ${sat}%, ${light}%)`;
+}
+
+function escapeHTML(str) {
+  const div = document.createElement("div");
+  div.textContent = str ?? "";
+  return div.innerHTML;
+}
+
+/* =========================================================
+   表示モードの切り替え
+========================================================= */
+document.getElementById("viewSwitch").addEventListener("click", (e) => {
+  const btn = e.target.closest(".seg-btn");
+  if (!btn) return;
+  document.querySelectorAll("#viewSwitch .seg-btn").forEach((b) => b.classList.remove("is-active"));
+  btn.classList.add("is-active");
+  state.currentView = btn.dataset.view;
+  renderAll();
+});
+
+/* 本棚表示：作者ごと / ごちゃまぜ の切り替え */
+document.getElementById("shelfModeSwitch").addEventListener("click", (e) => {
+  const btn = e.target.closest(".seg-btn");
+  if (!btn) return;
+  document.querySelectorAll("#shelfModeSwitch .seg-btn").forEach((b) => b.classList.remove("is-active"));
+  btn.classList.add("is-active");
+  state.shelfMode = btn.dataset.mode;
+  renderShelf(getVisibleBooks());
+});
+
+/* 本棚表示：色のばらつき・隙間の量・傾ける確率の調整パネル */
+document.getElementById("shelfSettingsToggle").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const panel = document.getElementById("shelfSettingsPanel");
+  panel.hidden = !panel.hidden;
+});
+document.addEventListener("click", (e) => {
+  const panel = document.getElementById("shelfSettingsPanel");
+  const toggle = document.getElementById("shelfSettingsToggle");
+  if (!panel.hidden && !panel.contains(e.target) && e.target !== toggle) {
+    panel.hidden = true;
+  }
+});
+
+const SHELF_SETTINGS_SLIDERS = [
+  { key: "colorVariance", input: "shelfColorVariance", value: "shelfColorVarianceValue" },
+  { key: "gapAmount", input: "shelfGapAmount", value: "shelfGapAmountValue" },
+  { key: "tiltChance", input: "shelfTiltChance", value: "shelfTiltChanceValue" },
+];
+
+function refreshShelfSettingsUI() {
+  SHELF_SETTINGS_SLIDERS.forEach(({ key, input, value }) => {
+    document.getElementById(input).value = state.shelfSettings[key];
+    document.getElementById(value).textContent = state.shelfSettings[key];
+  });
+}
+
+SHELF_SETTINGS_SLIDERS.forEach(({ key, input, value }) => {
+  document.getElementById(input).addEventListener("input", (e) => {
+    const num = Number(e.target.value);
+    state.shelfSettings[key] = num;
+    document.getElementById(value).textContent = num;
+    saveShelfSettings();
+    if (state.currentView === "shelf") renderShelf(getVisibleBooks());
+  });
+});
+
+/* =========================================================
+   検索
+========================================================= */
+document.getElementById("searchInput").addEventListener("input", (e) => {
+  state.searchTerm = e.target.value;
+  renderAll();
+});
+
+/* =========================================================
+   追加・編集モーダル
+========================================================= */
+const bookModal = document.getElementById("bookModal");
+const coverDrop = document.getElementById("coverDrop");
+const coverPreview = document.getElementById("coverPreview");
+const coverPlaceholder = document.getElementById("coverPlaceholder");
+const coverClear = document.getElementById("coverClear");
+
+function openAddModal() {
+  state.editingId = null;
+  state.pendingCoverData = null;
+  document.getElementById("modalTitle").textContent = "本を追加";
+  document.getElementById("inputTitle").value = "";
+  document.getElementById("inputAuthor").value = "";
+  document.getElementById("inputUrl").value = "";
+  document.getElementById("inputTags").value = "";
+  document.getElementById("inputMemo").value = "";
+  document.getElementById("inputDate").value = todayISO(); // 自動で今日の日付
+  setStarValue(0);
+  setCoverPreview(null);
+  document.getElementById("deleteBookBtn").hidden = true;
+  bookModal.hidden = false;
+  document.getElementById("inputTitle").focus();
+}
+
+function openEditModal(id) {
+  const book = state.books.find((b) => b.id === id);
+  if (!book) return;
+  state.editingId = id;
+  state.pendingCoverData = book.cover || null;
+  document.getElementById("modalTitle").textContent = "本を編集";
+  document.getElementById("inputTitle").value = book.title || "";
+  document.getElementById("inputAuthor").value = book.author || "";
+  document.getElementById("inputUrl").value = book.url || "";
+  document.getElementById("inputTags").value = (book.tags || []).join(", ");
+  document.getElementById("inputMemo").value = book.memo || "";
+  document.getElementById("inputDate").value = book.dateAdded || todayISO();
+  setStarValue(book.rating || 0);
+  setCoverPreview(book.cover || null);
+  document.getElementById("deleteBookBtn").hidden = false;
+  bookModal.hidden = false;
+  closeDetail();
+}
+
+function closeModal() {
+  bookModal.hidden = true;
+}
+
+document.getElementById("fabAdd").addEventListener("click", openAddModal);
+document.getElementById("modalClose").addEventListener("click", closeModal);
+document.getElementById("cancelBtn").addEventListener("click", closeModal);
+bookModal.addEventListener("click", (e) => {
+  if (e.target === bookModal) closeModal();
+});
+
+/* ---- 表紙画像のペースト ---- */
+function setCoverPreview(dataURL) {
+  state.pendingCoverData = dataURL;
+  if (dataURL) {
+    coverPreview.src = dataURL;
+    coverPreview.hidden = false;
+    coverPlaceholder.hidden = true;
+    coverClear.hidden = false;
+  } else {
+    coverPreview.hidden = true;
+    coverPreview.src = "";
+    coverPlaceholder.hidden = false;
+    coverClear.hidden = true;
+  }
+}
+
+coverDrop.addEventListener("paste", (e) => {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith("image/")) {
+      const file = item.getAsFile();
+      const reader = new FileReader();
+      reader.onload = (ev) => setCoverPreview(ev.target.result);
+      reader.readAsDataURL(file);
+      e.preventDefault();
+      return;
+    }
+  }
+  showToast("画像がクリップボードに見つかりませんでした");
+});
+
+coverDrop.addEventListener("click", () => coverDrop.focus());
+coverClear.addEventListener("click", (e) => {
+  e.stopPropagation();
+  setCoverPreview(null);
+});
+
+/* ---- 星評価（編集可能） ---- */
+const starRatingEl = document.getElementById("starRating");
+function setStarValue(value) {
+  starRatingEl.dataset.value = value;
+  starRatingEl.querySelectorAll(".star").forEach((s) => {
+    s.classList.toggle("is-filled", Number(s.dataset.value) <= value);
+  });
+}
+starRatingEl.querySelectorAll(".star").forEach((star) => {
+  star.addEventListener("click", () => setStarValue(Number(star.dataset.value)));
+});
+document.getElementById("starClear").addEventListener("click", () => setStarValue(0));
+
+/* ---- 保存 ---- */
+document.getElementById("saveBtn").addEventListener("click", () => {
+  const title = document.getElementById("inputTitle").value.trim();
+  if (!title) {
+    showToast("タイトルを入力してください");
+    document.getElementById("inputTitle").focus();
+    return;
+  }
+
+  const tags = document
+    .getElementById("inputTags")
+    .value.split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  const data = {
+    title,
+    author: document.getElementById("inputAuthor").value.trim(),
+    url: document.getElementById("inputUrl").value.trim(),
+    tags,
+    memo: document.getElementById("inputMemo").value.trim(),
+    rating: Number(starRatingEl.dataset.value) || 0,
+    dateAdded: document.getElementById("inputDate").value || todayISO(),
+    cover: state.pendingCoverData || null,
+  };
+
+  if (state.editingId) {
+    const idx = state.books.findIndex((b) => b.id === state.editingId);
+    if (idx !== -1) state.books[idx] = { ...state.books[idx], ...data };
+    showToast("本を更新しました");
+  } else {
+    data.id = generateId();
+    state.books.unshift(data);
+    showToast("本を追加しました");
+  }
+
+  saveBooks();
+  closeModal();
+  renderAll();
+});
+
+/* ---- 削除 ---- */
+document.getElementById("deleteBookBtn").addEventListener("click", () => {
+  if (!state.editingId) return;
+  if (!confirm("この本を削除しますか？この操作は取り消せません。")) return;
+  state.books = state.books.filter((b) => b.id !== state.editingId);
+  saveBooks();
+  closeModal();
+  renderAll();
+  showToast("削除しました");
+});
+
+/* =========================================================
+   詳細パネル
+========================================================= */
+const detailModal = document.getElementById("detailModal");
+let detailOpenId = null;
+
+function openDetail(id) {
+  const book = state.books.find((b) => b.id === id);
+  if (!book) return;
+  detailOpenId = id;
+
+  document.getElementById("detailCover").src =
+    book.cover || "data:image/svg+xml;utf8," + encodeURIComponent(
+      `<svg xmlns='http://www.w3.org/2000/svg' width='300' height='450'><rect width='100%' height='100%' fill='#232733'/></svg>`
+    );
+  document.getElementById("detailTitle").textContent = book.title || "無題";
+  document.getElementById("detailAuthor").textContent = book.author || "作者不明";
+  document.getElementById("detailDate").textContent = "追加日：" + formatDateJP(book.dateAdded);
+  document.getElementById("detailStars").innerHTML = starsHTML(book.rating);
+  document.getElementById("detailMemo").textContent = book.memo || "（メモはまだありません）";
+
+  const urlEl = document.getElementById("detailUrl");
+  if (book.url) {
+    urlEl.href = book.url;
+    urlEl.style.display = "inline-block";
+  } else {
+    urlEl.style.display = "none";
+  }
+
+  const tagsEl = document.getElementById("detailTags");
+  tagsEl.innerHTML = (book.tags || [])
+    .map((t) => `<span class="tag-chip">${escapeHTML(t)}</span>`)
+    .join("");
+
+  detailModal.hidden = false;
+}
+
+function closeDetail() {
+  detailModal.hidden = true;
+  detailOpenId = null;
+}
+
+document.getElementById("detailClose").addEventListener("click", closeDetail);
+detailModal.addEventListener("click", (e) => {
+  if (e.target === detailModal) closeDetail();
+});
+
+document.getElementById("detailEditBtn").addEventListener("click", () => {
+  if (detailOpenId) openEditModal(detailOpenId);
+});
+
+/* ---- 共有 ---- */
+document.getElementById("detailShareBtn").addEventListener("click", async () => {
+  const book = state.books.find((b) => b.id === detailOpenId);
+  if (!book) return;
+  const text = buildShareText(book);
+
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: book.title, text, url: book.url || undefined });
+      return;
+    } catch (e) {
+      /* ユーザーがキャンセルした場合などはコピーにフォールバック */
+    }
+  }
+  await copyToClipboard(text);
+  showToast("共有用テキストをコピーしました");
+});
+
+function buildShareText(book) {
+  const lines = [
+    `📖 ${book.title}`,
+    book.author ? `著者：${book.author}` : null,
+    book.rating ? `評価：${"★".repeat(book.rating)}${"☆".repeat(5 - book.rating)}` : null,
+    book.url ? `関連リンク：${book.url}` : null,
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    console.error("コピーに失敗しました", e);
+  }
+}
+
+/* ---- コピーして複製 ---- */
+document.getElementById("detailCopyBtn").addEventListener("click", () => {
+  const book = state.books.find((b) => b.id === detailOpenId);
+  if (!book) return;
+  const copy = {
+    ...book,
+    id: generateId(),
+    title: book.title + "（コピー）",
+    dateAdded: todayISO(),
+  };
+  state.books.unshift(copy);
+  saveBooks();
+  renderAll();
+  showToast("本を複製しました");
+});
+
+/* =========================================================
+   トースト通知
+========================================================= */
+let toastTimer = null;
+function showToast(message) {
+  const toast = document.getElementById("toast");
+  toast.textContent = message;
+  toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.hidden = true;
+  }, 2200);
+}
+
+/* =========================================================
+   起動
+========================================================= */
+loadBooks();
+loadShelfSettings();
+refreshShelfSettingsUI();
+renderAll();
+
+// ウィンドウ幅が変わって列数(2列⇔3列)が切り替わったときに空き枠の数を合わせ直す
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (state.currentView === "grid") renderGrid(getVisibleBooks());
+  }, 200);
+});
+
+</script>
+<script>
+// スマホのホーム画面に追加してアプリのように使えるようにする
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
