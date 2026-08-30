@@ -2142,7 +2142,18 @@ document.getElementById("detailShareBtn").addEventListener("click", async () => 
     }
   }
 
-  // 画像共有に対応していない場合は、画像をダウンロードする
+  // 画像共有に対応していない場合は、画像をクリップボードにコピーする
+  if (navigator.clipboard && window.ClipboardItem) {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      showToast("画像をコピーしました。貼り付けて共有できます");
+      return;
+    } catch (e) {
+      console.error("画像のコピーに失敗しました", e);
+    }
+  }
+
+  // クリップボードへの画像コピーにも対応していない場合のみ、最後の手段としてダウンロード
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
