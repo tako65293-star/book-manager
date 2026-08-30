@@ -1156,7 +1156,31 @@ async function syncBooksToCloud() {
   }
 }
 
-/* ---- ログイン画面の制御 ---- */
+/** ログイン機能を作る前、このブラウザのlocalStorageに残っている古い本のデータがあれば、
+ *  クラウドの本棚が空のときに限り「読み込みますか？」と聞いて取り込む（一度きりの移行処理） */
+const OLD_STORAGE_KEY = "localBookshelf.books.v1";
+async function maybeMigrateOldLocalBooks() {
+  if (state.books.length > 0) return; // クラウドに既にデータがあるなら何もしない
+  let oldBooks = [];
+  try {
+    const raw = localStorage.getItem(OLD_STORAGE_KEY);
+    oldBooks = raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return;
+  }
+  if (!Array.isArray(oldBooks) || oldBooks.length === 0) return;
+
+  const ok = confirm(
+    `このブラウザに、アカウント機能を作る前の本のデータが${oldBooks.length}冊分残っています。今のアカウントに読み込みますか？`
+  );
+  if (!ok) return;
+
+  state.books = oldBooks;
+  await syncBooksToCloud();
+  showToast(`${oldBooks.length}冊のデータを読み込みました`);
+}
+
+
 const authScreen = document.getElementById("authScreen");
 const authForm = document.getElementById("authForm");
 const authEmail = document.getElementById("authEmail");
@@ -1322,6 +1346,7 @@ onAuthStateChanged(auth, async (user) => {
       console.error("本の読み込みに失敗しました", e);
       showToast("本の読み込みに失敗しました（通信をご確認ください）");
     }
+    await maybeMigrateOldLocalBooks();
     loadShelfSettings();
     refreshShelfSettingsUI();
     renderAll();
