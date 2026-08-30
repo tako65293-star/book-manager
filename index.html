@@ -1157,10 +1157,12 @@ async function syncBooksToCloud() {
 }
 
 /** ログイン機能を作る前、このブラウザのlocalStorageに残っている古い本のデータがあれば、
- *  クラウドの本棚が空のときに限り「読み込みますか？」と聞いて取り込む（一度きりの移行処理） */
+ *  「今のアカウントの本に追加しますか？」と聞いて取り込む（一度対応したら二度と聞かない） */
 const OLD_STORAGE_KEY = "localBookshelf.books.v1";
+const MIGRATION_DONE_KEY = "localBookshelf.migrated.v1";
 async function maybeMigrateOldLocalBooks() {
-  if (state.books.length > 0) return; // クラウドに既にデータがあるなら何もしない
+  if (localStorage.getItem(MIGRATION_DONE_KEY)) return; // 既に一度対応済みなら聞かない
+
   let oldBooks = [];
   try {
     const raw = localStorage.getItem(OLD_STORAGE_KEY);
@@ -1170,14 +1172,24 @@ async function maybeMigrateOldLocalBooks() {
   }
   if (!Array.isArray(oldBooks) || oldBooks.length === 0) return;
 
+  // 既にアカウント側に入っている本（id一致）は除いて、新規分だけ数える
+  const existingIds = new Set(state.books.map((b) => b.id));
+  const newOnes = oldBooks.filter((b) => !existingIds.has(b.id));
+
+  if (newOnes.length === 0) {
+    localStorage.setItem(MIGRATION_DONE_KEY, "1");
+    return;
+  }
+
   const ok = confirm(
-    `このブラウザに、アカウント機能を作る前の本のデータが${oldBooks.length}冊分残っています。今のアカウントに読み込みますか？`
+    `このブラウザに、アカウント機能を作る前の本のデータが${newOnes.length}冊分残っています。今のアカウントの本棚に追加しますか？`
   );
+  localStorage.setItem(MIGRATION_DONE_KEY, "1");
   if (!ok) return;
 
-  state.books = oldBooks;
+  state.books = [...newOnes, ...state.books];
   await syncBooksToCloud();
-  showToast(`${oldBooks.length}冊のデータを読み込みました`);
+  showToast(`${newOnes.length}冊のデータを追加しました`);
 }
 
 
