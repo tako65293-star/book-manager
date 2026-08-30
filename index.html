@@ -1104,6 +1104,7 @@ import {
   setDoc,
   deleteDoc,
   writeBatch,
+  onSnapshot,
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -1121,18 +1122,38 @@ const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 
 let currentUser = null;
+let unsubscribeBooks = null; // リアルタイム監視を止めるための関数（ログアウト時に呼ぶ）
 
 function booksCollection() {
   return collection(db, "users", currentUser.uid, "books");
 }
 
-/** Firestoreからその人の本を全部読み込む */
-async function loadBooksFromCloud() {
-  const snap = await getDocs(booksCollection());
-  state.books = snap.docs.map((d) => d.data());
+/** Firestoreの変更をリアルタイムで監視し、他の端末での追加・編集・削除を
+ *  自動で画面に反映する。ログインのたびに呼び出す。 */
+function watchBooksRealtime() {
+  let isFirstSnapshot = true;
+  unsubscribeBooks = onSnapshot(
+    booksCollection(),
+    async (snap) => {
+      state.books = snap.docs.map((d) => d.data());
+
+      if (isFirstSnapshot) {
+        isFirstSnapshot = false;
+        await maybeMigrateOldLocalBooks();
+        loadShelfSettings();
+        refreshShelfSettingsUI();
+      }
+      renderAll();
+    },
+    (e) => {
+      console.error("本の読み込みに失敗しました", e);
+      showToast("本の読み込みに失敗しました（通信をご確認ください）");
+    }
+  );
 }
 
-/** state.books の内容をまるごとFirestoreへ反映する（追加・更新・削除すべて対応） */
+/** state.books の内容をまるごとFirestoreへ反映する（追加・更新・削除すべて対応）
+ *  ※画面への反映自体は上のリアルタイム監視が自動でやってくれる */
 async function syncBooksToCloud() {
   if (!currentUser) return;
   try {
@@ -1352,17 +1373,12 @@ onAuthStateChanged(auth, async (user) => {
     appRootEl.hidden = false;
     authForm.reset();
     clearAuthError();
-    try {
-      await loadBooksFromCloud();
-    } catch (e) {
-      console.error("本の読み込みに失敗しました", e);
-      showToast("本の読み込みに失敗しました（通信をご確認ください）");
-    }
-    await maybeMigrateOldLocalBooks();
-    loadShelfSettings();
-    refreshShelfSettingsUI();
-    renderAll();
+    watchBooksRealtime(); // 以後、本の読み込み・移行チェック・renderAllはすべてこの中で自動的に行われる
   } else {
+    if (unsubscribeBooks) {
+      unsubscribeBooks();
+      unsubscribeBooks = null;
+    }
     document.body.classList.remove("is-authed");
     document.body.classList.add("not-authed");
     appRootEl.hidden = true;
