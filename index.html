@@ -2308,10 +2308,21 @@ function buildShareCardBlob(book) {
       ctx.textAlign = "left";
       ctx.fillText("ローカル本棚", padX + 48, H - 72);
 
-      canvas.toBlob((blob) => {
-        if (blob) resolve(blob);
-        else reject(new Error("toBlob failed"));
-      }, "image/png");
+      // スマホのブラウザでは、drawImage直後にtoBlob()を呼ぶと
+      // 描画(特にGPU側の合成)がまだ終わっていない状態で画像化されてしまい、
+      // 表紙の一部が欠けたようなギザギザの模様になることがある。
+      // そのため、書き出す直前に一度ピクセルを読み出して描画の完了を強制し、
+      // さらに1フレーム待ってからtoBlob()を呼ぶことで、確実に描画が
+      // 終わった状態のCanvasを画像化する。
+      ctx.getImageData(0, 0, 1, 1);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          canvas.toBlob((blob) => {
+            if (blob) resolve(blob);
+            else reject(new Error("toBlob failed"));
+          }, "image/png");
+        });
+      });
     }
 
     drawCoverArea();
