@@ -1975,6 +1975,26 @@ function setCoverPreview(dataURL) {
   }
 }
 
+/** 貼り付けられた画像データが実際にちゃんと描画できるかを確認する。
+ *  コピー元のページで画像がまだ読み込み中（プレースホルダー表示中）のときに
+ *  コピーしてしまうと、欠けた/壊れた画像データがそのまま貼り付けられてしまい、
+ *  あとで共有画像を作るときにその欠けが目立つ形で出てきてしまうため、
+ *  貼り付け時点でサイズの妥当性をチェックしておく。 */
+function verifyImageData(dataURL) {
+  return new Promise((resolve, reject) => {
+    const testImg = new Image();
+    testImg.onload = () => {
+      if (testImg.naturalWidth < 10 || testImg.naturalHeight < 10) {
+        reject(new Error("画像のサイズが不正です"));
+        return;
+      }
+      resolve();
+    };
+    testImg.onerror = () => reject(new Error("画像を読み込めませんでした"));
+    testImg.src = dataURL;
+  });
+}
+
 coverDrop.addEventListener("paste", (e) => {
   const items = e.clipboardData?.items;
   if (!items) return;
@@ -1982,7 +2002,15 @@ coverDrop.addEventListener("paste", (e) => {
     if (item.type.startsWith("image/")) {
       const file = item.getAsFile();
       const reader = new FileReader();
-      reader.onload = (ev) => setCoverPreview(ev.target.result);
+      reader.onload = async (ev) => {
+        const dataURL = ev.target.result;
+        try {
+          await verifyImageData(dataURL);
+          setCoverPreview(dataURL);
+        } catch (err) {
+          showToast("画像を読み込めませんでした。コピー元の画像が完全に表示されてから、もう一度コピーしてください");
+        }
+      };
       reader.readAsDataURL(file);
       e.preventDefault();
       return;
