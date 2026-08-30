@@ -2242,12 +2242,12 @@ function buildShareCardBlob(book) {
         y += 64;
       }
 
-      // 星評価
+      // 星評価（フォントの★グリフに依存すると環境によって崩れることがあるため、図形として描く）
       if (book.rating > 0) {
-        ctx.font = "40px sans-serif";
+        const starSize = 34;
         for (let i = 1; i <= 5; i++) {
           ctx.fillStyle = i <= book.rating ? "#e8a33d" : "#343a47";
-          ctx.fillText("★", padX + (i - 1) * 50, y);
+          drawStarShape(ctx, padX + starSize / 2 + (i - 1) * 50, y - starSize / 2, starSize / 2);
         }
         y += 72;
       }
@@ -2273,11 +2273,12 @@ function buildShareCardBlob(book) {
         ctx.textBaseline = "alphabetic";
       }
 
-      // 下部ブランディング
+      // 下部ブランディング（絵文字グリフは環境依存で崩れることがあるため、簡単な図形で本アイコンを描く）
       ctx.fillStyle = "#5fb8b3";
+      drawBookIconShape(ctx, padX, H - 72 - 26, 34);
       ctx.font = "700 34px 'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif";
       ctx.textAlign = "left";
-      ctx.fillText("📖 ローカル本棚", padX, H - 72);
+      ctx.fillText("ローカル本棚", padX + 48, H - 72);
 
       canvas.toBlob((blob) => {
         if (blob) resolve(blob);
@@ -2317,6 +2318,53 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r);
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
+}
+
+/** 五芒星（★）を文字ではなく図形として描く。
+ *  フォントに★のグリフが無い環境で豆腐や変な形になってしまうのを避けるため。
+ *  cx, cy: 中心座標 / r: 外側の半径 */
+function drawStarShape(ctx, cx, cy, r) {
+  const innerR = r * 0.45;
+  const spikes = 5;
+  let rot = (Math.PI / 2) * 3;
+  const step = Math.PI / spikes;
+
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r);
+  for (let i = 0; i < spikes; i++) {
+    let x = cx + Math.cos(rot) * r;
+    let y = cy + Math.sin(rot) * r;
+    ctx.lineTo(x, y);
+    rot += step;
+
+    x = cx + Math.cos(rot) * innerR;
+    y = cy + Math.sin(rot) * innerR;
+    ctx.lineTo(x, y);
+    rot += step;
+  }
+  ctx.lineTo(cx, cy - r);
+  ctx.closePath();
+  ctx.fill();
+}
+
+/** 開いた本のアイコンを簡単な図形で描く（アプリのロゴと同じモチーフ）。
+ *  x, y: 左上あたりの基準座標 / size: だいたいの一辺の大きさ */
+function drawBookIconShape(ctx, x, y, size) {
+  const w = size, h = size * 0.62;
+  const cx = x + w / 2;
+  const topY = y;
+  const botY = y + h;
+
+  ctx.beginPath();
+  ctx.moveTo(cx, topY + h * 0.12);
+  ctx.quadraticCurveTo(cx - w * 0.1, topY, x, topY + h * 0.05);
+  ctx.lineTo(x, botY - h * 0.08);
+  ctx.quadraticCurveTo(cx - w * 0.1, botY - h * 0.02, cx, botY);
+  ctx.quadraticCurveTo(cx + w * 0.1, botY - h * 0.02, x + w, botY - h * 0.08);
+  ctx.lineTo(x + w, topY + h * 0.05);
+  ctx.quadraticCurveTo(cx + w * 0.1, topY, cx, topY + h * 0.12);
+  ctx.closePath();
+  ctx.fill();
 }
 
 /** 指定幅で自動改行しながらテキストを描画する（最大行数を超えたら…で省略）。
