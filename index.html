@@ -64,6 +64,7 @@ body{
 ========================================================= */
 body.not-authed #appRoot{ display:none; }
 body.is-authed #authScreen{ display:none; }
+body.is-authed #appRoot[hidden]{ display: block; }
 
 .auth-screen{
   min-height: 100dvh;
@@ -1308,9 +1309,11 @@ document.getElementById("phoneConfirmBtn").addEventListener("click", async () =>
 
 onAuthStateChanged(auth, async (user) => {
   currentUser = user;
+  const appRootEl = document.getElementById("appRoot");
   if (user) {
     document.body.classList.remove("not-authed");
     document.body.classList.add("is-authed");
+    appRootEl.hidden = false;
     authForm.reset();
     clearAuthError();
     try {
@@ -1325,6 +1328,7 @@ onAuthStateChanged(auth, async (user) => {
   } else {
     document.body.classList.remove("is-authed");
     document.body.classList.add("not-authed");
+    appRootEl.hidden = true;
     state.books = [];
     phoneStepNumber.hidden = false;
     phoneStepCode.hidden = true;
