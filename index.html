@@ -2113,12 +2113,49 @@ document.getElementById("detailEditBtn").addEventListener("click", () => {
   if (detailOpenId) openEditModal(detailOpenId);
 });
 
-/* ---- 共有 ---- */
+/* ---- 共有（本の情報をカード画像にして共有） ---- */
 document.getElementById("detailShareBtn").addEventListener("click", async () => {
   const book = state.books.find((b) => b.id === detailOpenId);
   if (!book) return;
-  const text = buildShareText(book);
 
+  showToast("画像を作成しています…");
+  let blob;
+  try {
+    blob = await buildShareCardBlob(book);
+  } catch (e) {
+    console.error("共有画像の作成に失敗しました", e);
+    // 画像作成に失敗した場合は、今まで通りテキスト共有にフォールバック
+    await shareOrCopyText(book);
+    return;
+  }
+
+  const fileName = (book.title || "book").replace(/[\\/:*?"<>|]/g, "") + ".png";
+  const file = new File([blob], fileName, { type: "image/png" });
+
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: book.title, text: buildShareText(book) });
+      return;
+    } catch (e) {
+      if (e && e.name === "AbortError") return; // ユーザーがキャンセルした場合は何もしない
+      /* 共有に失敗した場合はダウンロードにフォールバック */
+    }
+  }
+
+  // 画像共有に対応していない場合は、画像をダウンロードする
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+  showToast("画像を保存しました");
+});
+
+async function shareOrCopyText(book) {
+  const text = buildShareText(book);
   if (navigator.share) {
     try {
       await navigator.share({ title: book.title, text, url: book.url || undefined });
@@ -2129,7 +2166,190 @@ document.getElementById("detailShareBtn").addEventListener("click", async () => 
   }
   await copyToClipboard(text);
   showToast("共有用テキストをコピーしました");
-});
+}
+
+/** 本の表紙・タイトル・作者・評価・タグを1枚のカード画像(縦長)として描き、PNGのBlobを返す */
+function buildShareCardBlob(book) {
+  return new Promise((resolve, reject) => {
+    const W = 1080, H = 1920;
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d");
+
+    // 背景
+    ctx.fillStyle = "#14161c";
+    ctx.fillRect(0, 0, W, H);
+
+    const coverBottom = Math.round(H * 0.62);
+
+    function drawCoverArea() {
+      if (book.cover) {
+        const img = new Image();
+        img.onload = () => {
+          drawImageCover(ctx, img, 0, 0, W, coverBottom);
+          finishCard();
+        };
+        img.onerror = () => {
+          drawFallbackCover();
+          finishCard();
+        };
+        img.src = book.cover;
+      } else {
+        drawFallbackCover();
+        finishCard();
+      }
+    }
+
+    function drawFallbackCover() {
+      ctx.fillStyle = colorFromString(book.title || book.id || "");
+      ctx.fillRect(0, 0, W, coverBottom);
+      ctx.fillStyle = "rgba(255,255,255,0.92)";
+      ctx.font = "700 56px 'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      wrapFillText(ctx, book.title || "無題", W / 2, coverBottom / 2, W - 160, 68);
+    }
+
+    function finishCard() {
+      // 表紙下部から自然に暗くなるグラデーション（下のテキストとの馴染ませ）
+      const grad = ctx.createLinearGradient(0, coverBottom - 260, 0, coverBottom);
+      grad.addColorStop(0, "rgba(20,22,28,0)");
+      grad.addColorStop(1, "rgba(20,22,28,1)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, coverBottom - 260, W, 260);
+
+      // 下部パネル
+      ctx.fillStyle = "#14161c";
+      ctx.fillRect(0, coverBottom, W, H - coverBottom);
+
+      const padX = 72;
+      let y = coverBottom + 96;
+
+      // タイトル
+      ctx.fillStyle = "#eef0f4";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+      ctx.font = "900 58px 'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif";
+      y = wrapFillText(ctx, book.title || "無題", padX, y, W - padX * 2, 68, 2) + 20;
+
+      // 作者
+      if (book.author) {
+        ctx.fillStyle = "#9aa1af";
+        ctx.font = "500 38px 'Noto Sans JP', sans-serif";
+        ctx.fillText(book.author, padX, y);
+        y += 64;
+      }
+
+      // 星評価
+      if (book.rating > 0) {
+        ctx.font = "40px sans-serif";
+        for (let i = 1; i <= 5; i++) {
+          ctx.fillStyle = i <= book.rating ? "#e8a33d" : "#343a47";
+          ctx.fillText("★", padX + (i - 1) * 50, y);
+        }
+        y += 72;
+      }
+
+      // タグ（チップ状に描画、入りきらない分は省略）
+      if (book.tags && book.tags.length > 0) {
+        ctx.font = "500 30px 'Noto Sans JP', sans-serif";
+        let x = padX;
+        const chipH = 56;
+        for (const tag of book.tags) {
+          const label = "#" + tag;
+          const textW = ctx.measureText(label).width;
+          const chipW = textW + 36;
+          if (x + chipW > W - padX) break; // 収まらなければそこで打ち切り
+          ctx.fillStyle = "#232733";
+          roundRect(ctx, x, y, chipW, chipH, 999);
+          ctx.fill();
+          ctx.fillStyle = "#9aa1af";
+          ctx.textBaseline = "middle";
+          ctx.fillText(label, x + 18, y + chipH / 2 + 2);
+          x += chipW + 14;
+        }
+        ctx.textBaseline = "alphabetic";
+      }
+
+      // 下部ブランディング
+      ctx.fillStyle = "#5fb8b3";
+      ctx.font = "700 34px 'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText("📖 ローカル本棚", padX, H - 72);
+
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("toBlob failed"));
+      }, "image/png");
+    }
+
+    drawCoverArea();
+  });
+}
+
+/** object-fit: cover と同じ見た目で画像を描画する */
+function drawImageCover(ctx, img, x, y, w, h) {
+  const imgRatio = img.width / img.height;
+  const boxRatio = w / h;
+  let sx, sy, sw, sh;
+  if (imgRatio > boxRatio) {
+    sh = img.height;
+    sw = sh * boxRatio;
+    sx = (img.width - sw) / 2;
+    sy = 0;
+  } else {
+    sw = img.width;
+    sh = sw / boxRatio;
+    sx = 0;
+    sy = (img.height - sh) / 2;
+  }
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+}
+
+/** 角丸の矩形パスを作る（塗り・線どちらにも使える） */
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/** 指定幅で自動改行しながらテキストを描画する（最大行数を超えたら…で省略）。
+ *  戻り値は描画し終えたあとのy座標（次の要素をこの下に続けて配置できる） */
+function wrapFillText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 3) {
+  const chars = Array.from(text || "");
+  let line = "";
+  let lines = [];
+  for (const ch of chars) {
+    const test = line + ch;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = ch;
+      if (lines.length === maxLines - 1) break;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  // 省略された分があれば最後の行を…で終わらせる
+  const consumedChars = lines.join("").length;
+  if (consumedChars < chars.length && lines.length === maxLines) {
+    let last = lines[lines.length - 1];
+    while (ctx.measureText(last + "…").width > maxWidth && last.length > 0) {
+      last = last.slice(0, -1);
+    }
+    lines[lines.length - 1] = last + "…";
+  }
+
+  lines.forEach((l, i) => {
+    ctx.fillText(l, x, y + i * lineHeight);
+  });
+  return y + lines.length * lineHeight;
+}
 
 function buildShareText(book) {
   const lines = [
