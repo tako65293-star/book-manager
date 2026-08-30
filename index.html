@@ -163,9 +163,13 @@ body.is-authed #appRoot[hidden]{ display: block; }
   padding: 18px 28px;
   border-bottom: 1px solid var(--border);
   background: linear-gradient(180deg, var(--bg-elevated), var(--bg));
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
   z-index: 20;
+  box-sizing: border-box;
 }
 
 .brand{ display:flex; align-items:center; gap:10px; }
@@ -238,7 +242,7 @@ body.is-authed #appRoot[hidden]{ display: block; }
 /* =========================================================
    メイン / ビュー切り替え
 ========================================================= */
-main{ padding: 28px; max-width: 1280px; margin: 0 auto; }
+main{ padding: calc(28px + var(--header-height, 76px)) 28px 28px; max-width: 1280px; margin: 0 auto; }
 .view-panel{ display:none; }
 .view-panel.is-active{ display:block; }
 
@@ -791,7 +795,7 @@ input:focus, textarea:focus{
 ========================================================= */
 @media (max-width: 640px){
   .app-header{ padding: 14px 16px; }
-  main{ padding: 18px; }
+  main{ padding: calc(18px + var(--header-height, 120px)) 18px 18px; }
   .form-grid{ grid-template-columns: 1fr; }
 }
 
@@ -2179,6 +2183,22 @@ function showToast(message) {
    起動
    （本の読み込み・表示は onAuthStateChanged 内でログイン後に行われます）
 ========================================================= */
+
+/* ヘッダーを固定表示(position:fixed)にしたので、本文が隠れないよう
+   ヘッダーの実際の高さを測って --header-height に反映する。
+   検索欄の折り返しなどで高さが変わることがあるため、ResizeObserverで監視する。 */
+const appHeaderEl = document.querySelector(".app-header");
+function updateHeaderHeightVar() {
+  document.documentElement.style.setProperty("--header-height", appHeaderEl.offsetHeight + "px");
+}
+if (appHeaderEl) {
+  updateHeaderHeightVar();
+  if (window.ResizeObserver) {
+    new ResizeObserver(updateHeaderHeightVar).observe(appHeaderEl);
+  } else {
+    window.addEventListener("resize", updateHeaderHeightVar);
+  }
+}
 
 // ウィンドウ幅が変わって列数(2列⇔3列)が切り替わったときに空き枠の数を合わせ直す
 let resizeTimer = null;
