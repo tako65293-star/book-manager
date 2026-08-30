@@ -2113,47 +2113,37 @@ document.getElementById("detailEditBtn").addEventListener("click", () => {
   if (detailOpenId) openEditModal(detailOpenId);
 });
 
-/* ---- 共有（本の情報をカード画像にして共有） ---- */
+/* ---- 共有（本の情報をカード画像にしてクリップボードへコピー） ---- */
 document.getElementById("detailShareBtn").addEventListener("click", async () => {
   const book = state.books.find((b) => b.id === detailOpenId);
   if (!book) return;
 
-  showToast("画像を作成しています…");
+  if (navigator.clipboard && window.ClipboardItem) {
+    // 「クリックされた瞬間」からできるだけ間を空けずに呼ばないと、
+    // ブラウザによってはコピー操作を拒否してしまう。
+    // 画像そのものはまだできていなくても、Promiseの状態でClipboardItemに渡せるので、
+    // 完成を待たずにすぐ呼び出す。
+    const blobPromise = buildShareCardBlob(book);
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blobPromise })]);
+      showToast("画像をコピーしました。貼り付けて共有できます");
+      return;
+    } catch (e) {
+      console.error("画像のコピーに失敗しました", e);
+      showToast("コピーに失敗しました。画像を保存します");
+    }
+  }
+
+  // クリップボードへの画像コピーに対応していない場合は、画像をダウンロードする
   let blob;
   try {
     blob = await buildShareCardBlob(book);
   } catch (e) {
     console.error("共有画像の作成に失敗しました", e);
-    // 画像作成に失敗した場合は、今まで通りテキスト共有にフォールバック
     await shareOrCopyText(book);
     return;
   }
-
   const fileName = (book.title || "book").replace(/[\\/:*?"<>|]/g, "") + ".png";
-  const file = new File([blob], fileName, { type: "image/png" });
-
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title: book.title, text: buildShareText(book) });
-      return;
-    } catch (e) {
-      if (e && e.name === "AbortError") return; // ユーザーがキャンセルした場合は何もしない
-      /* 共有に失敗した場合はダウンロードにフォールバック */
-    }
-  }
-
-  // 画像共有に対応していない場合は、画像をクリップボードにコピーする
-  if (navigator.clipboard && window.ClipboardItem) {
-    try {
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-      showToast("画像をコピーしました。貼り付けて共有できます");
-      return;
-    } catch (e) {
-      console.error("画像のコピーに失敗しました", e);
-    }
-  }
-
-  // クリップボードへの画像コピーにも対応していない場合のみ、最後の手段としてダウンロード
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
