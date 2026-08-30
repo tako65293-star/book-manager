@@ -60,6 +60,98 @@ body{
 }
 
 /* =========================================================
+   ログイン画面
+========================================================= */
+body.not-authed #appRoot{ display:none; }
+body.is-authed #authScreen{ display:none; }
+
+.auth-screen{
+  min-height: 100dvh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding: 24px;
+  background:
+    radial-gradient(600px 400px at 20% 10%, var(--accent-soft), transparent),
+    var(--bg);
+}
+.auth-card{
+  width: 100%;
+  max-width: 380px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 32px 28px;
+  box-shadow: 0 20px 50px rgba(0,0,0,.4);
+}
+.auth-brand{ display:flex; align-items:center; gap:10px; margin-bottom: 6px; }
+.auth-brand h1{ font-size: 20px; margin:0; }
+.auth-sub{ color: var(--text-muted); font-size: 13px; margin: 4px 0 22px; line-height:1.6; }
+.auth-label{ display:block; font-size: 12px; color: var(--text-muted); margin: 14px 0 6px; }
+.auth-input{
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+}
+.auth-input:focus{ outline:none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.auth-social{ display:flex; flex-direction:column; gap:10px; margin-top: 20px; }
+.auth-social-btn{ width:100%; justify-content:center; gap:10px; }
+.auth-divider{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 18px 0 6px;
+}
+.auth-divider::before, .auth-divider::after{
+  content:"";
+  flex:1;
+  height:1px;
+  background: var(--border);
+}
+#phoneStepNumber, #phoneStepCode{ margin-top: 4px; }
+.auth-actions{ display:flex; gap: 10px; margin-top: 22px; }
+.auth-btn{ flex:1; justify-content:center; }
+.auth-forgot{
+  display:block;
+  margin: 16px auto 0;
+  background:none;
+  border:none;
+  color: var(--accent-2);
+  font-size: 12.5px;
+  cursor:pointer;
+  text-decoration: underline;
+}
+.auth-error{
+  background: #e8556033;
+  border: 1px solid #e85560;
+  color: #ffb4bb;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  margin-bottom: 4px;
+  line-height:1.5;
+}
+.logout-btn{
+  order: 99;
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.logout-btn:hover{ border-color: var(--accent); color: var(--text); }
+
+/* =========================================================
    ヘッダー
 ========================================================= */
 .app-header{
@@ -710,10 +802,77 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 
 </style>
 </head>
-<body>
+<body class="not-authed">
+
+<!-- ============ ログイン画面 ============ -->
+<div id="authScreen" class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <span class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 5.2c2.3-1 4.7-1 6.9 0 1 .45 1.9 1.05 2.7 1.8v11.3c-2.9-2-6.4-2.3-9.6-1V5.2z"/>
+          <path d="M22 5.2c-2.3-1-4.7-1-6.9 0-1 .45-1.9 1.05-2.7 1.8v11.3c2.9-2 6.4-2.3 9.6-1V5.2z"/>
+        </svg>
+      </span>
+      <h1>ローカル本棚</h1>
+    </div>
+    <p class="auth-sub">ログインすると、どの端末からでも同じ本棚を見られます。</p>
+
+    <div id="authError" class="auth-error" hidden></div>
+
+    <div class="auth-social">
+      <button type="button" id="googleLoginBtn" class="btn btn-ghost auth-social-btn">
+        <svg viewBox="0 0 48 48" width="18" height="18"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C34.5 5.5 29.5 3.5 24 3.5 12.7 3.5 3.5 12.7 3.5 24S12.7 44.5 24 44.5 44.5 35.3 44.5 24c0-1.2-.1-2.4-.3-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.8 1.1 8 3l6-6C34.5 6.5 29.5 4.5 24 4.5c-7.7 0-14.4 4.3-17.7 10.2z"/><path fill="#4CAF50" d="M24 44.5c5.4 0 10.3-1.9 14-5.6l-6.5-5.4C29.4 35 26.8 36 24 36c-5.3 0-9.7-3.3-11.3-7.9l-6.6 5.1C9.5 40.1 16.2 44.5 24 44.5z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.5l6.5 5.4C40.9 36.6 44.5 30.9 44.5 24c0-1.2-.1-2.4-.3-3.5z"/></svg>
+        Googleでログイン
+      </button>
+      <button type="button" id="appleLoginBtn" class="btn btn-ghost auth-social-btn">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M16.365 1.43c0 1.14-.462 2.208-1.212 2.99-.81.85-2.132 1.51-3.223 1.42-.14-1.1.42-2.24 1.19-2.99.81-.79 2.19-1.38 3.245-1.42zM20.5 17.24c-.53 1.22-.78 1.76-1.46 2.83-.95 1.5-2.29 3.37-3.95 3.39-1.47.02-1.85-.96-3.84-.95-1.99.01-2.41.97-3.88.95-1.66-.02-2.93-1.7-3.88-3.2C1.36 16.9.9 12.87 2.4 10.36c1.06-1.78 2.81-2.9 4.7-2.93 1.5-.03 2.9.99 3.84.99.94 0 2.65-1.22 4.47-1.04.76.03 2.9.31 4.27 2.31-.11.07-2.55 1.49-2.52 4.44.03 3.52 3.09 4.69 3.34 4.7z"/></svg>
+        Appleでログイン
+      </button>
+    </div>
+
+    <div class="auth-divider"><span>または</span></div>
+
+    <form id="authForm">
+      <label class="auth-label" for="authEmail">メールアドレス</label>
+      <input type="email" id="authEmail" class="auth-input" autocomplete="email" required>
+
+      <label class="auth-label" for="authPassword">パスワード（6文字以上）</label>
+      <input type="password" id="authPassword" class="auth-input" autocomplete="current-password" required minlength="6">
+
+      <div class="auth-actions">
+        <button type="submit" id="authLoginBtn" class="btn btn-primary auth-btn">ログイン</button>
+        <button type="button" id="authSignupBtn" class="btn btn-ghost auth-btn">新規登録</button>
+      </div>
+    </form>
+    <button type="button" id="authForgotBtn" class="auth-forgot">パスワードをお忘れですか？</button>
+
+    <div class="auth-divider"><span>電話番号でログイン</span></div>
+
+    <div id="phoneStepNumber">
+      <label class="auth-label" for="authPhone">電話番号（例: 09012345678）</label>
+      <input type="tel" id="authPhone" class="auth-input" placeholder="09012345678" autocomplete="tel">
+      <button type="button" id="phoneSendBtn" class="btn btn-ghost auth-btn" style="margin-top:10px;width:100%;">認証コードを送る</button>
+    </div>
+    <div id="phoneStepCode" hidden>
+      <label class="auth-label" for="authPhoneCode">SMSで届いた6桁のコード</label>
+      <input type="text" id="authPhoneCode" class="auth-input" inputmode="numeric" placeholder="123456" autocomplete="one-time-code">
+      <button type="button" id="phoneConfirmBtn" class="btn btn-primary auth-btn" style="margin-top:10px;width:100%;">コードを確認してログイン</button>
+    </div>
+    <div id="recaptchaContainer"></div>
+
+    <div class="auth-divider"><span></span></div>
+    <button type="button" id="anonLoginBtn" class="auth-forgot">アカウントを作らずに試してみる</button>
+  </div>
+</div>
+
+<!-- ============ アプリ本体 ============ -->
+<div id="appRoot" hidden>
 
 <!-- ============ ヘッダー ============ -->
 <header class="app-header">
+
+  <button id="logoutBtn" class="logout-btn" title="ログアウト" type="button">ログアウト</button>
   <div class="brand">
     <span class="brand-mark">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
@@ -910,14 +1069,271 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 <!-- トースト通知 -->
 <div id="toast" class="toast" hidden></div>
 
-<script>
+</div><!-- /#appRoot -->
+
+<script type="module">
 /* =========================================================
    ローカル本棚 - script.js
-   すべてのデータはブラウザの localStorage に保存されます。
-   （＝このパソコン・このブラウザだけに残る、自分専用の本棚です）
+   本のデータは Firebase（Authentication + Firestore）に保存され、
+   ログインすればどの端末からでも同じ本棚が見られます。
+   （表示設定など端末ごとの好みだけ localStorage に残しています）
 ========================================================= */
 
-const STORAGE_KEY = "localBookshelf.books.v1";
+/* ---- Firebase ---- */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  sendPasswordResetEmail,
+  GoogleAuthProvider,
+  OAuthProvider,
+  signInWithPopup,
+  signInAnonymously,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
+import {
+  getFirestore,
+  collection,
+  doc,
+  getDocs,
+  setDoc,
+  deleteDoc,
+  writeBatch,
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB_rbEU2hej1ZbTCLpo0yvbGXwsO9bnnYo",
+  authDomain: "book-manager-95248.firebaseapp.com",
+  projectId: "book-manager-95248",
+  storageBucket: "book-manager-95248.firebasestorage.app",
+  messagingSenderId: "922598266880",
+  appId: "1:922598266880:web:aa1c50ad46dfdd21e0a0e5",
+  measurementId: "G-ZHEEWFPSTC",
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+
+let currentUser = null;
+
+function booksCollection() {
+  return collection(db, "users", currentUser.uid, "books");
+}
+
+/** Firestoreからその人の本を全部読み込む */
+async function loadBooksFromCloud() {
+  const snap = await getDocs(booksCollection());
+  state.books = snap.docs.map((d) => d.data());
+}
+
+/** state.books の内容をまるごとFirestoreへ反映する（追加・更新・削除すべて対応） */
+async function syncBooksToCloud() {
+  if (!currentUser) return;
+  try {
+    const snap = await getDocs(booksCollection());
+    const existingIds = new Set(snap.docs.map((d) => d.id));
+    const currentIds = new Set(state.books.map((b) => b.id));
+
+    const batch = writeBatch(db);
+    state.books.forEach((book) => {
+      batch.set(doc(db, "users", currentUser.uid, "books", book.id), book);
+    });
+    existingIds.forEach((id) => {
+      if (!currentIds.has(id)) {
+        batch.delete(doc(db, "users", currentUser.uid, "books", id));
+      }
+    });
+    await batch.commit();
+  } catch (e) {
+    console.error("クラウドへの保存に失敗しました", e);
+    showToast("クラウドへの保存に失敗しました（通信をご確認ください）");
+  }
+}
+
+/* ---- ログイン画面の制御 ---- */
+const authScreen = document.getElementById("authScreen");
+const authForm = document.getElementById("authForm");
+const authEmail = document.getElementById("authEmail");
+const authPassword = document.getElementById("authPassword");
+const authError = document.getElementById("authError");
+const authSignupBtn = document.getElementById("authSignupBtn");
+const authForgotBtn = document.getElementById("authForgotBtn");
+const logoutBtn = document.getElementById("logoutBtn");
+
+function showAuthError(message) {
+  authError.textContent = message;
+  authError.hidden = false;
+}
+function clearAuthError() {
+  authError.hidden = true;
+  authError.textContent = "";
+}
+
+function translateAuthError(code) {
+  const map = {
+    "auth/invalid-email": "メールアドレスの形式が正しくありません",
+    "auth/user-not-found": "このメールアドレスは登録されていません",
+    "auth/wrong-password": "パスワードが違います",
+    "auth/invalid-credential": "メールアドレスかパスワードが違います",
+    "auth/email-already-in-use": "このメールアドレスは既に登録されています",
+    "auth/weak-password": "パスワードは6文字以上にしてください",
+    "auth/too-many-requests": "試行回数が多すぎます。しばらくしてから試してください",
+    "auth/popup-closed-by-user": "ログイン画面が閉じられました",
+    "auth/invalid-phone-number": "電話番号の形式が正しくありません",
+    "auth/invalid-verification-code": "コードが正しくありません",
+    "auth/account-exists-with-different-credential": "このメールアドレスは別の方法で登録済みです",
+  };
+  return map[code] || "エラーが発生しました。もう一度お試しください";
+}
+
+authForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  clearAuthError();
+  try {
+    await signInWithEmailAndPassword(auth, authEmail.value.trim(), authPassword.value);
+  } catch (err) {
+    showAuthError(translateAuthError(err.code));
+  }
+});
+
+authSignupBtn.addEventListener("click", async () => {
+  clearAuthError();
+  if (!authEmail.value.trim() || authPassword.value.length < 6) {
+    showAuthError("メールアドレスと6文字以上のパスワードを入力してください");
+    return;
+  }
+  try {
+    await createUserWithEmailAndPassword(auth, authEmail.value.trim(), authPassword.value);
+    showToast("アカウントを作成しました");
+  } catch (err) {
+    showAuthError(translateAuthError(err.code));
+  }
+});
+
+authForgotBtn.addEventListener("click", async () => {
+  clearAuthError();
+  if (!authEmail.value.trim()) {
+    showAuthError("パスワード再設定メールを送るメールアドレスを入力してください");
+    return;
+  }
+  try {
+    await sendPasswordResetEmail(auth, authEmail.value.trim());
+    showAuthError("パスワード再設定メールを送信しました。メールをご確認ください");
+  } catch (err) {
+    showAuthError(translateAuthError(err.code));
+  }
+});
+
+logoutBtn.addEventListener("click", async () => {
+  await signOut(auth);
+});
+
+/* ---- Google / Apple ログイン ---- */
+document.getElementById("googleLoginBtn").addEventListener("click", async () => {
+  clearAuthError();
+  try {
+    await signInWithPopup(auth, new GoogleAuthProvider());
+  } catch (err) {
+    showAuthError(translateAuthError(err.code));
+  }
+});
+
+document.getElementById("appleLoginBtn").addEventListener("click", async () => {
+  clearAuthError();
+  try {
+    await signInWithPopup(auth, new OAuthProvider("apple.com"));
+  } catch (err) {
+    showAuthError(translateAuthError(err.code));
+  }
+});
+
+/* ---- 匿名ログイン ---- */
+document.getElementById("anonLoginBtn").addEventListener("click", async () => {
+  clearAuthError();
+  try {
+    await signInAnonymously(auth);
+  } catch (err) {
+    showAuthError(translateAuthError(err.code));
+  }
+});
+
+/* ---- 電話番号ログイン ---- */
+const phoneStepNumber = document.getElementById("phoneStepNumber");
+const phoneStepCode = document.getElementById("phoneStepCode");
+const authPhone = document.getElementById("authPhone");
+const authPhoneCode = document.getElementById("authPhoneCode");
+let confirmationResult = null;
+let recaptchaVerifier = null;
+
+function toE164(input) {
+  const digits = input.trim().replace(/[^\d]/g, "");
+  if (input.trim().startsWith("+")) return input.trim();
+  if (digits.startsWith("0")) return "+81" + digits.slice(1); // 日本の番号想定
+  return "+" + digits;
+}
+
+document.getElementById("phoneSendBtn").addEventListener("click", async () => {
+  clearAuthError();
+  if (!authPhone.value.trim()) {
+    showAuthError("電話番号を入力してください");
+    return;
+  }
+  try {
+    if (!recaptchaVerifier) {
+      recaptchaVerifier = new RecaptchaVerifier(auth, "recaptchaContainer", { size: "invisible" });
+    }
+    confirmationResult = await signInWithPhoneNumber(auth, toE164(authPhone.value), recaptchaVerifier);
+    phoneStepNumber.hidden = true;
+    phoneStepCode.hidden = false;
+    showToast("認証コードを送信しました");
+  } catch (err) {
+    showAuthError(translateAuthError(err.code));
+  }
+});
+
+document.getElementById("phoneConfirmBtn").addEventListener("click", async () => {
+  clearAuthError();
+  if (!confirmationResult) return;
+  try {
+    await confirmationResult.confirm(authPhoneCode.value.trim());
+  } catch (err) {
+    showAuthError(translateAuthError(err.code));
+  }
+});
+
+onAuthStateChanged(auth, async (user) => {
+  currentUser = user;
+  if (user) {
+    document.body.classList.remove("not-authed");
+    document.body.classList.add("is-authed");
+    authForm.reset();
+    clearAuthError();
+    try {
+      await loadBooksFromCloud();
+    } catch (e) {
+      console.error("本の読み込みに失敗しました", e);
+      showToast("本の読み込みに失敗しました（通信をご確認ください）");
+    }
+    loadShelfSettings();
+    refreshShelfSettingsUI();
+    renderAll();
+  } else {
+    document.body.classList.remove("is-authed");
+    document.body.classList.add("not-authed");
+    state.books = [];
+    phoneStepNumber.hidden = false;
+    phoneStepCode.hidden = true;
+    authPhone.value = "";
+    authPhoneCode.value = "";
+    confirmationResult = null;
+  }
+});
+
 const SHELF_SETTINGS_KEY = "localBookshelf.shelfSettings.v1";
 const SHELF_SETTINGS_DEFAULTS = {
   colorVariance: 100, // 色のばらつき：0で単色寄り、100で今までどおりの幅
@@ -954,18 +1370,9 @@ function loadShelfSettings() {
 function saveShelfSettings() {
   localStorage.setItem(SHELF_SETTINGS_KEY, JSON.stringify(state.shelfSettings));
 }
-function loadBooks() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    state.books = raw ? JSON.parse(raw) : [];
-  } catch (e) {
-    console.error("本のデータの読み込みに失敗しました", e);
-    state.books = [];
-  }
-}
-
+/** 本の一覧を更新するたびに呼ぶ。クラウド(Firestore)へ保存する。 */
 function saveBooks() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.books));
+  syncBooksToCloud();
 }
 
 function generateId() {
@@ -1698,11 +2105,8 @@ function showToast(message) {
 
 /* =========================================================
    起動
+   （本の読み込み・表示は onAuthStateChanged 内でログイン後に行われます）
 ========================================================= */
-loadBooks();
-loadShelfSettings();
-refreshShelfSettingsUI();
-renderAll();
 
 // ウィンドウ幅が変わって列数(2列⇔3列)が切り替わったときに空き枠の数を合わせ直す
 let resizeTimer = null;
