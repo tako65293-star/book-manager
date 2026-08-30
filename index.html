@@ -1100,7 +1100,6 @@ import {
   getFirestore,
   collection,
   doc,
-  getDocs,
   setDoc,
   deleteDoc,
   writeBatch,
@@ -1152,29 +1151,36 @@ function watchBooksRealtime() {
   );
 }
 
-/** state.books の内容をまるごとFirestoreへ反映する（追加・更新・削除すべて対応）
- *  ※画面への反映自体は上のリアルタイム監視が自動でやってくれる */
-async function syncBooksToCloud() {
+/** 本を1冊分だけ追加・更新する（他の本には触れない） */
+async function saveBookToCloud(book) {
   if (!currentUser) return;
   try {
-    const snap = await getDocs(booksCollection());
-    const existingIds = new Set(snap.docs.map((d) => d.id));
-    const currentIds = new Set(state.books.map((b) => b.id));
-
-    const batch = writeBatch(db);
-    state.books.forEach((book) => {
-      batch.set(doc(db, "users", currentUser.uid, "books", book.id), book);
-    });
-    existingIds.forEach((id) => {
-      if (!currentIds.has(id)) {
-        batch.delete(doc(db, "users", currentUser.uid, "books", id));
-      }
-    });
-    await batch.commit();
+    await setDoc(doc(booksCollection(), book.id), book);
   } catch (e) {
     console.error("クラウドへの保存に失敗しました", e);
     showToast("クラウドへの保存に失敗しました（通信をご確認ください）");
   }
+}
+
+/** 本を1冊分だけ削除する（他の本には触れない） */
+async function deleteBookFromCloud(id) {
+  if (!currentUser) return;
+  try {
+    await deleteDoc(doc(booksCollection(), id));
+  } catch (e) {
+    console.error("クラウドからの削除に失敗しました", e);
+    showToast("クラウドからの削除に失敗しました（通信をご確認ください）");
+  }
+}
+
+/** 複数冊をまとめて追加する（移行処理専用。既存の本には触れない） */
+async function addBooksToCloud(books) {
+  if (!currentUser || books.length === 0) return;
+  const batch = writeBatch(db);
+  books.forEach((book) => {
+    batch.set(doc(booksCollection(), book.id), book);
+  });
+  await batch.commit();
 }
 
 /** ログイン機能を作る前、このブラウザのlocalStorageに残っている古い本のデータがあれば、
@@ -1209,7 +1215,7 @@ async function maybeMigrateOldLocalBooks() {
   if (!ok) return;
 
   state.books = [...newOnes, ...state.books];
-  await syncBooksToCloud();
+  await addBooksToCloud(newOnes);
   showToast(`${newOnes.length}冊のデータを追加しました`);
 }
 
@@ -1426,10 +1432,6 @@ function loadShelfSettings() {
 
 function saveShelfSettings() {
   localStorage.setItem(SHELF_SETTINGS_KEY, JSON.stringify(state.shelfSettings));
-}
-/** 本の一覧を更新するたびに呼ぶ。クラウド(Firestore)へ保存する。 */
-function saveBooks() {
-  syncBooksToCloud();
 }
 
 function generateId() {
@@ -2017,17 +2019,20 @@ document.getElementById("saveBtn").addEventListener("click", () => {
     cover: state.pendingCoverData || null,
   };
 
+  let savedBook;
   if (state.editingId) {
     const idx = state.books.findIndex((b) => b.id === state.editingId);
     if (idx !== -1) state.books[idx] = { ...state.books[idx], ...data };
+    savedBook = state.books[idx];
     showToast("本を更新しました");
   } else {
     data.id = generateId();
     state.books.unshift(data);
+    savedBook = data;
     showToast("本を追加しました");
   }
 
-  saveBooks();
+  saveBookToCloud(savedBook);
   closeModal();
   renderAll();
 });
@@ -2036,8 +2041,9 @@ document.getElementById("saveBtn").addEventListener("click", () => {
 document.getElementById("deleteBookBtn").addEventListener("click", () => {
   if (!state.editingId) return;
   if (!confirm("この本を削除しますか？この操作は取り消せません。")) return;
-  state.books = state.books.filter((b) => b.id !== state.editingId);
-  saveBooks();
+  const idToDelete = state.editingId;
+  state.books = state.books.filter((b) => b.id !== idToDelete);
+  deleteBookFromCloud(idToDelete);
   closeModal();
   renderAll();
   showToast("削除しました");
@@ -2141,7 +2147,7 @@ document.getElementById("detailCopyBtn").addEventListener("click", () => {
     dateAdded: todayISO(),
   };
   state.books.unshift(copy);
-  saveBooks();
+  saveBookToCloud(copy);
   renderAll();
   showToast("本を複製しました");
 });
