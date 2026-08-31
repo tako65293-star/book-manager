@@ -151,6 +151,7 @@ body.is-authed #appRoot[hidden]{ display: block; }
   cursor: pointer;
 }
 .logout-btn:hover{ border-color: var(--accent); color: var(--text); }
+.stats-btn{ order: 98; margin-left: auto; }
 
 /* =========================================================
    ヘッダー
@@ -677,6 +678,37 @@ main{ padding: calc(28px + var(--header-height, 76px)) 28px 28px; max-width: 128
 .modal-close:hover{ background: var(--surface-hover); color: var(--text); }
 .modal h2{ font-family: var(--font-display); font-weight: 900; margin: 0 0 18px; font-size: 20px; }
 
+/* ---- 統計パネル ---- */
+.stats-modal{ max-width: 640px; }
+.stat-summary-grid{
+  display:grid; grid-template-columns: repeat(2, 1fr); gap:12px;
+  margin-bottom: 26px;
+}
+@media (min-width: 480px){
+  .stat-summary-grid{ grid-template-columns: repeat(4, 1fr); }
+}
+.stat-card{
+  background: var(--surface); border:1px solid var(--border); border-radius: var(--radius-m);
+  padding: 14px 12px; text-align:center;
+}
+.stat-card .stat-num{ font-family: var(--font-display); font-weight:900; font-size: 26px; color: var(--accent); line-height:1.2; }
+.stat-card .stat-label{ font-size: 12px; color: var(--text-muted); margin-top:4px; }
+
+.stat-section{ margin-bottom: 26px; }
+.stat-section:last-child{ margin-bottom: 0; }
+.stat-section-title{
+  font-size: 13px; font-weight:700; color: var(--text-muted);
+  margin: 0 0 10px;
+}
+.stat-bar-row{
+  display:flex; align-items:center; gap:10px; margin-bottom: 8px; font-size: 13px;
+}
+.stat-bar-label{ width: 100px; flex-shrink:0; color: var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.stat-bar-track{ flex:1; background: var(--surface); border-radius: 999px; height: 14px; overflow:hidden; }
+.stat-bar-fill{ height:100%; background: var(--accent); border-radius: 999px; }
+.stat-bar-count{ width: 34px; text-align:right; flex-shrink:0; color: var(--text); font-weight:600; }
+.stat-empty{ color: var(--text-muted); font-size: 13px; }
+
 /* ---- 表紙ペースト欄 ---- */
 .cover-drop{
   position: relative;
@@ -953,6 +985,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
     <button class="seg-btn" data-view="shelf" role="tab">本棚</button>
     <button class="seg-btn" data-view="galaxy" role="tab">作者マップ</button>
   </div>
+
+  <button id="statsBtn" class="logout-btn stats-btn" title="統計" type="button">📊 統計</button>
 </header>
 
 <!-- ============ メインコンテンツ（フィルター行も一緒にスクロールする） ============ -->
@@ -1151,6 +1185,15 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ============ 統計パネル ============ -->
+<div id="statsModal" class="modal-overlay" hidden>
+  <div class="modal stats-modal">
+    <button class="modal-close" id="statsClose" aria-label="閉じる">✕</button>
+    <h2>統計</h2>
+    <div id="statsContent"></div>
   </div>
 </div>
 
@@ -2365,6 +2408,139 @@ document.getElementById("detailClose").addEventListener("click", closeDetail);
 detailModal.addEventListener("click", (e) => {
   if (e.target === detailModal) closeDetail();
 });
+
+/* =========================================================
+   統計パネル
+========================================================= */
+function computeStats(books) {
+  const total = books.length;
+
+  const statusCount = { unread: 0, reading: 0, read: 0 };
+  books.forEach((b) => {
+    const s = b.status || "read";
+    statusCount[s] = (statusCount[s] || 0) + 1;
+  });
+
+  const rated = books.filter((b) => b.rating > 0);
+  const avgRating = rated.length
+    ? (rated.reduce((sum, b) => sum + b.rating, 0) / rated.length)
+    : 0;
+
+  const ratingDist = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  rated.forEach((b) => { ratingDist[b.rating] = (ratingDist[b.rating] || 0) + 1; });
+
+  const authorCount = {};
+  books.forEach((b) => {
+    const a = (b.author || "").trim();
+    if (!a) return;
+    authorCount[a] = (authorCount[a] || 0) + 1;
+  });
+  const topAuthors = Object.entries(authorCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  const tagCount = {};
+  books.forEach((b) => (b.tags || []).forEach((t) => {
+    tagCount[t] = (tagCount[t] || 0) + 1;
+  }));
+  const topTags = Object.entries(tagCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  // 直近6か月の追加冊数（今月を含む）
+  const now = new Date();
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: `${d.getMonth() + 1}月`, count: 0 });
+  }
+  books.forEach((b) => {
+    const key = (b.dateAdded || "").slice(0, 7);
+    const m = months.find((mm) => mm.key === key);
+    if (m) m.count++;
+  });
+
+  return { total, statusCount, avgRating, ratedCount: rated.length, ratingDist, authorTotal: Object.keys(authorCount).length, topAuthors, topTags, months };
+}
+
+/** ラベル・件数の配列から棒グラフの行HTMLを作る（maxで正規化） */
+function statBarRowsHTML(rows, max) {
+  if (rows.length === 0) return `<p class="stat-empty">まだデータがありません</p>`;
+  const safeMax = max || Math.max(...rows.map((r) => r.count), 1);
+  return rows
+    .map(
+      (r) => `
+      <div class="stat-bar-row">
+        <span class="stat-bar-label">${escapeHTML(r.label)}</span>
+        <span class="stat-bar-track"><span class="stat-bar-fill" style="width:${(r.count / safeMax) * 100}%"></span></span>
+        <span class="stat-bar-count">${r.count}</span>
+      </div>`
+    )
+    .join("");
+}
+
+function renderStats() {
+  const s = computeStats(state.books);
+  const el = document.getElementById("statsContent");
+
+  const summaryHTML = `
+    <div class="stat-summary-grid">
+      <div class="stat-card"><div class="stat-num">${s.total}</div><div class="stat-label">総冊数</div></div>
+      <div class="stat-card"><div class="stat-num">${s.avgRating ? s.avgRating.toFixed(1) : "—"}</div><div class="stat-label">平均評価（${s.ratedCount}冊中）</div></div>
+      <div class="stat-card"><div class="stat-num">${s.authorTotal}</div><div class="stat-label">著者数</div></div>
+      <div class="stat-card"><div class="stat-num">${getAllTags().length}</div><div class="stat-label">タグ数</div></div>
+    </div>
+  `;
+
+  const statusRows = [
+    { label: "積読", count: s.statusCount.unread || 0 },
+    { label: "読書中", count: s.statusCount.reading || 0 },
+    { label: "読了", count: s.statusCount.read || 0 },
+  ];
+
+  const ratingRows = [5, 4, 3, 2, 1].map((n) => ({ label: "★".repeat(n), count: s.ratingDist[n] || 0 }));
+
+  const authorRows = s.topAuthors.map(([name, count]) => ({ label: name, count }));
+  const tagRows = s.topTags.map(([name, count]) => ({ label: "#" + name, count }));
+  const monthRows = s.months.map((m) => ({ label: m.label, count: m.count }));
+
+  el.innerHTML = `
+    ${summaryHTML}
+    <div class="stat-section">
+      <p class="stat-section-title">読書状況の内訳</p>
+      ${statBarRowsHTML(statusRows)}
+    </div>
+    <div class="stat-section">
+      <p class="stat-section-title">評価の分布</p>
+      ${statBarRowsHTML(ratingRows)}
+    </div>
+    <div class="stat-section">
+      <p class="stat-section-title">よく読む著者 TOP5</p>
+      ${statBarRowsHTML(authorRows)}
+    </div>
+    <div class="stat-section">
+      <p class="stat-section-title">よく使うタグ TOP5</p>
+      ${statBarRowsHTML(tagRows)}
+    </div>
+    <div class="stat-section">
+      <p class="stat-section-title">直近6か月の追加冊数</p>
+      ${statBarRowsHTML(monthRows)}
+    </div>
+  `;
+}
+
+const statsModal = document.getElementById("statsModal");
+document.getElementById("statsBtn").addEventListener("click", () => {
+  renderStats();
+  statsModal.hidden = false;
+});
+document.getElementById("statsClose").addEventListener("click", () => {
+  statsModal.hidden = true;
+});
+statsModal.addEventListener("click", (e) => {
+  if (e.target === statsModal) statsModal.hidden = true;
+});
+
 
 document.getElementById("detailEditBtn").addEventListener("click", () => {
   if (detailOpenId) openEditModal(detailOpenId);
