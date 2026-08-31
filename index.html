@@ -158,21 +158,61 @@ body.is-authed #appRoot[hidden]{ display: block; }
   margin-bottom: 4px;
   line-height:1.5;
 }
-.logout-btn{
-  order: 99;
+/* よく使わない操作(積読ガチャ・テーマ切替・統計・ログアウト)は
+   「⋮」メニューにまとめて、ヘッダーに常時見える要素を減らす */
+.header-menu-wrap{
+  position: relative;
   margin-left: auto;
+}
+.icon-menu-btn{
   background: none;
   border: 1px solid var(--border);
   color: var(--text-muted);
   border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 13px;
+  width: 38px;
+  height: 38px;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
+  transition: border-color .15s, color .15s;
 }
-.logout-btn:hover{ border-color: var(--accent); color: var(--text); }
-#randomPickBtn{ order: 96; margin-left: auto; }
-#themeToggleBtn{ order: 97; }
-#statsBtn{ order: 98; }
+.icon-menu-btn:hover,
+.icon-menu-btn.is-open{ border-color: var(--accent); color: var(--text); }
+
+.header-menu{
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 208px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 16px 40px rgba(0,0,0,.45);
+  z-index: 30;
+}
+.header-menu[hidden]{ display: none; }
+.header-menu-item{
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  padding: 10px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+.header-menu-item:hover{ background: var(--surface-hover); }
+.header-menu-icon{ font-size: 16px; width: 20px; flex: none; display: flex; justify-content: center; }
+.header-menu-divider{ border: none; border-top: 1px solid var(--border); margin: 6px 2px; }
 
 /* =========================================================
    ヘッダー
@@ -983,7 +1023,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 <!-- ============ ヘッダー（固定表示） ============ -->
 <header class="app-header" id="fixedTop">
 
-  <button id="logoutBtn" class="logout-btn" title="ログアウト" type="button">ログアウト</button>
   <div class="brand">
     <span class="brand-mark">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
@@ -1007,9 +1046,25 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
     <button class="seg-btn" data-view="galaxy" role="tab">作者マップ</button>
   </div>
 
-  <button id="randomPickBtn" class="logout-btn" title="積読からランダムに1冊" type="button">🎲 積読ガチャ</button>
-  <button id="themeToggleBtn" class="logout-btn" title="テーマ切り替え" type="button">🌙</button>
-  <button id="statsBtn" class="logout-btn" title="統計" type="button">📊 統計</button>
+  <!-- たまにしか使わない操作はここにまとめる -->
+  <div class="header-menu-wrap">
+    <button id="headerMenuBtn" class="icon-menu-btn" type="button" title="メニュー" aria-haspopup="true" aria-expanded="false">⋮</button>
+    <div class="header-menu" id="headerMenu" role="menu" hidden>
+      <button id="randomPickBtn" class="header-menu-item" type="button" role="menuitem">
+        <span class="header-menu-icon">🎲</span>積読ガチャ
+      </button>
+      <button id="themeToggleBtn" class="header-menu-item" type="button" role="menuitem">
+        <span class="header-menu-icon" id="themeToggleIcon">🌙</span>テーマ切り替え
+      </button>
+      <button id="statsBtn" class="header-menu-item" type="button" role="menuitem">
+        <span class="header-menu-icon">📊</span>統計
+      </button>
+      <hr class="header-menu-divider">
+      <button id="logoutBtn" class="header-menu-item" type="button" role="menuitem">
+        <span class="header-menu-icon">⏻</span>ログアウト
+      </button>
+    </div>
+  </div>
 </header>
 
 <!-- ============ メインコンテンツ（フィルター行も一緒にスクロールする） ============ -->
@@ -2583,7 +2638,7 @@ document.getElementById("randomPickBtn").addEventListener("click", () => {
 const THEME_STORAGE_KEY = "bookManagerTheme";
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
-  document.getElementById("themeToggleBtn").textContent = theme === "light" ? "☀️" : "🌙";
+  document.getElementById("themeToggleIcon").textContent = theme === "light" ? "☀️" : "🌙";
 }
 function initTheme() {
   const saved = localStorage.getItem(THEME_STORAGE_KEY);
@@ -2596,6 +2651,40 @@ document.getElementById("themeToggleBtn").addEventListener("click", () => {
   applyTheme(next);
 });
 initTheme();
+
+/* =========================================================
+   ヘッダーの「⋮」メニュー（積読ガチャ・テーマ切替・統計・ログアウト）
+========================================================= */
+const headerMenuBtn = document.getElementById("headerMenuBtn");
+const headerMenu = document.getElementById("headerMenu");
+function closeHeaderMenu() {
+  headerMenu.hidden = true;
+  headerMenuBtn.classList.remove("is-open");
+  headerMenuBtn.setAttribute("aria-expanded", "false");
+}
+function openHeaderMenu() {
+  headerMenu.hidden = false;
+  headerMenuBtn.classList.add("is-open");
+  headerMenuBtn.setAttribute("aria-expanded", "true");
+}
+headerMenuBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (headerMenu.hidden) openHeaderMenu();
+  else closeHeaderMenu();
+});
+// メニュー内のボタンを押したら閉じる
+headerMenu.addEventListener("click", (e) => {
+  if (e.target.closest(".header-menu-item")) closeHeaderMenu();
+});
+// メニューの外をクリックしたら閉じる
+document.addEventListener("click", (e) => {
+  if (!headerMenu.hidden && !headerMenu.contains(e.target) && e.target !== headerMenuBtn) {
+    closeHeaderMenu();
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeHeaderMenu();
+});
 
 
 document.getElementById("detailEditBtn").addEventListener("click", () => {
