@@ -155,13 +155,6 @@ body.is-authed #appRoot[hidden]{ display: block; }
 /* =========================================================
    ヘッダー
 ========================================================= */
-.fixed-top{
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  width: 100%;
-  z-index: 20;
-  background: var(--bg);
-}
 .app-header{
   display:flex;
   align-items:center;
@@ -170,6 +163,12 @@ body.is-authed #appRoot[hidden]{ display: block; }
   padding: 18px 28px;
   border-bottom: 1px solid var(--border);
   background: linear-gradient(180deg, var(--bg-elevated), var(--bg));
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 20;
   box-sizing: border-box;
 }
 
@@ -357,11 +356,9 @@ main{ padding: calc(28px + var(--header-height, 76px)) 28px 28px; max-width: 128
 /* 読書状況フィルター（ヘッダー下） */
 .status-filter{
   display:flex; gap:8px; flex-wrap:wrap;
-  padding: 14px 28px;
-  max-width: 1280px; margin: 0 auto;
-  background: var(--bg);
+  padding: 0 0 16px;
 }
-#tagFilter{ border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+#tagFilter:not(:empty){ border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 20px; }
 .status-filter .status-filter-btn{
   border:1px solid var(--border); background: var(--surface);
   color: var(--text-muted); font-size: 13px; font-weight:600;
@@ -380,7 +377,7 @@ main{ padding: calc(28px + var(--header-height, 76px)) 28px 28px; max-width: 128
   font-weight: 500;
 }
 @media (max-width: 640px){
-  .status-filter{ padding: 10px 16px; }
+  .status-filter{ padding: 0 0 14px; }
   .sort-select{ margin-left: 0; }
 }
 
@@ -930,9 +927,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 <!-- ============ アプリ本体 ============ -->
 <div id="appRoot" hidden>
 
-<!-- ============ ヘッダー（フィルター行も含めて固定表示） ============ -->
-<div class="fixed-top" id="fixedTop">
-<header class="app-header">
+<!-- ============ ヘッダー（固定表示） ============ -->
+<header class="app-header" id="fixedTop">
 
   <button id="logoutBtn" class="logout-btn" title="ログアウト" type="button">ログアウト</button>
   <div class="brand">
@@ -959,6 +955,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
   </div>
 </header>
 
+<!-- ============ メインコンテンツ（フィルター行も一緒にスクロールする） ============ -->
+<main id="mainContent">
+
 <!-- 読書状況フィルター -->
 <div class="status-filter" id="statusFilter">
   <button class="status-filter-btn is-active" data-status="all">すべて</button>
@@ -977,10 +976,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 <!-- タグで絞り込み -->
 <div class="status-filter" id="tagFilter"></div>
 
-</div>
-
-<!-- ============ メインコンテンツ ============ -->
-<main id="mainContent">
 
   <!-- 表紙グリッド表示 -->
   <section id="view-grid" class="view-panel is-active"></section>
