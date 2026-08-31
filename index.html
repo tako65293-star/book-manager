@@ -2232,134 +2232,93 @@ async function shareOrCopyText(book) {
 }
 
 /** 本の表紙・タイトル・作者・評価・タグを1枚のカード画像(縦長)として描き、PNGのBlobを返す */
+/** 共有カードを作る。
+ *  以前は「表紙エリア」「グラデーション」「下部パネル」「星を1つずつ図形で描く」
+ *  「タグをチップ状に描く」など工程が多く、環境によって崩れる箇所の切り分けが
+ *  難しかったため、仕組みごとシンプルにやり直したもの。
+ *  やること：表紙を全面の背景にする → 下から暗くなるグラデーションを1枚重ねる
+ *  → タイトル・作者・★評価・追加日をテキストで描く、これだけ。 */
 function buildShareCardBlob(book) {
   return new Promise((resolve, reject) => {
-    const W = 1080, H = 1920;
+    const W = 1080, H = 1350;
     const canvas = document.createElement("canvas");
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext("2d");
 
-    // 背景
-    ctx.fillStyle = "#14161c";
-    ctx.fillRect(0, 0, W, H);
-
-    const coverBottom = Math.round(H * 0.62);
-
-    function drawCoverArea() {
-      if (book.cover) {
-        const img = new Image();
-        img.onload = () => {
-          drawImageCover(ctx, img, 0, 0, W, coverBottom);
-          finishCard();
-        };
-        img.onerror = () => {
-          drawFallbackCover();
-          finishCard();
-        };
-        img.src = book.cover;
-      } else {
-        drawFallbackCover();
-        finishCard();
-      }
-    }
-
-    function drawFallbackCover() {
+    function draw(img) {
+      // 背景（表紙が無い/読み込めない場合はここがそのまま見える）
       ctx.fillStyle = colorFromString(book.title || book.id || "");
-      ctx.fillRect(0, 0, W, coverBottom);
-      ctx.fillStyle = "rgba(255,255,255,0.92)";
-      ctx.font = "700 56px 'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      wrapFillText(ctx, book.title || "無題", W / 2, coverBottom / 2, W - 160, 68);
-    }
+      ctx.fillRect(0, 0, W, H);
 
-    function finishCard() {
-      // 表紙下部から自然に暗くなるグラデーション（下のテキストとの馴染ませ）
-      const grad = ctx.createLinearGradient(0, coverBottom - 260, 0, coverBottom);
-      grad.addColorStop(0, "rgba(20,22,28,0)");
-      grad.addColorStop(1, "rgba(20,22,28,1)");
+      // 表紙を画面全体に敷く（object-fit: cover と同じ考え方）
+      if (img) drawImageCover(ctx, img, 0, 0, W, H);
+
+      // 下から暗くなるグラデーションを1枚重ねるだけ（テキストを読みやすくする）
+      const grad = ctx.createLinearGradient(0, H * 0.35, 0, H);
+      grad.addColorStop(0, "rgba(10,11,15,0)");
+      grad.addColorStop(1, "rgba(10,11,15,0.92)");
       ctx.fillStyle = grad;
-      ctx.fillRect(0, coverBottom - 260, W, 260);
+      ctx.fillRect(0, 0, W, H);
 
-      // 下部パネル
-      ctx.fillStyle = "#14161c";
-      ctx.fillRect(0, coverBottom, W, H - coverBottom);
+      const padX = 64;
+      let y = H - 72;
 
-      const padX = 72;
-      let y = coverBottom + 96;
-
-      // タイトル
-      ctx.fillStyle = "#eef0f4";
+      // 下部ブランディング
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.font = "600 28px 'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif";
       ctx.textAlign = "left";
-      ctx.textBaseline = "alphabetic";
-      ctx.font = "900 58px 'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif";
-      y = wrapFillText(ctx, book.title || "無題", padX, y, W - padX * 2, 68, 2) + 20;
+      ctx.fillText("📖 ローカル本棚", padX, y);
+      y -= 56;
+
+      // 追加日
+      if (book.dateAdded) {
+        ctx.fillStyle = "rgba(255,255,255,0.7)";
+        ctx.font = "400 28px 'Noto Sans JP', sans-serif";
+        ctx.fillText(formatDateJP(book.dateAdded), padX, y);
+        y -= 52;
+      }
+
+      // ★評価（図形ではなく★文字をそのまま使う。シンプルさを優先）
+      if (book.rating > 0) {
+        ctx.font = "400 44px sans-serif";
+        const stars = "★★★★★".slice(0, book.rating) + "☆☆☆☆☆".slice(book.rating);
+        ctx.fillStyle = "#e8a33d";
+        ctx.fillText(stars, padX, y);
+        y -= 60;
+      }
 
       // 作者
       if (book.author) {
-        ctx.fillStyle = "#9aa1af";
-        ctx.font = "500 38px 'Noto Sans JP', sans-serif";
+        ctx.fillStyle = "rgba(255,255,255,0.8)";
+        ctx.font = "500 34px 'Noto Sans JP', sans-serif";
         ctx.fillText(book.author, padX, y);
-        y += 64;
+        y -= 56;
       }
 
-      // 星評価（フォントの★グリフに依存すると環境によって崩れることがあるため、図形として描く）
-      if (book.rating > 0) {
-        const starSize = 34;
-        for (let i = 1; i <= 5; i++) {
-          ctx.fillStyle = i <= book.rating ? "#e8a33d" : "#343a47";
-          drawStarShape(ctx, padX + starSize / 2 + (i - 1) * 50, y - starSize / 2, starSize / 2);
-        }
-        y += 72;
-      }
-
-      // タグ（チップ状に描画、入りきらない分は省略）
-      if (book.tags && book.tags.length > 0) {
-        ctx.font = "500 30px 'Noto Sans JP', sans-serif";
-        let x = padX;
-        const chipH = 56;
-        for (const tag of book.tags) {
-          const label = "#" + tag;
-          const textW = ctx.measureText(label).width;
-          const chipW = textW + 36;
-          if (x + chipW > W - padX) break; // 収まらなければそこで打ち切り
-          ctx.fillStyle = "#232733";
-          roundRect(ctx, x, y, chipW, chipH, 999);
-          ctx.fill();
-          ctx.fillStyle = "#9aa1af";
-          ctx.textBaseline = "middle";
-          ctx.fillText(label, x + 18, y + chipH / 2 + 2);
-          x += chipW + 14;
-        }
-        ctx.textBaseline = "alphabetic";
-      }
-
-      // 下部ブランディング（絵文字グリフは環境依存で崩れることがあるため、簡単な図形で本アイコンを描く）
-      ctx.fillStyle = "#5fb8b3";
-      drawBookIconShape(ctx, padX, H - 72 - 26, 34);
-      ctx.font = "700 34px 'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif";
-      ctx.textAlign = "left";
-      ctx.fillText("ローカル本棚", padX + 48, H - 72);
-
-      // スマホのブラウザでは、drawImage直後にtoBlob()を呼ぶと
-      // 描画(特にGPU側の合成)がまだ終わっていない状態で画像化されてしまい、
-      // 表紙の一部が欠けたようなギザギザの模様になることがある。
-      // そのため、書き出す直前に一度ピクセルを読み出して描画の完了を強制し、
-      // さらに1フレーム待ってからtoBlob()を呼ぶことで、確実に描画が
-      // 終わった状態のCanvasを画像化する。
-      ctx.getImageData(0, 0, 1, 1);
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          canvas.toBlob((blob) => {
-            if (blob) resolve(blob);
-            else reject(new Error("toBlob failed"));
-          }, "image/png");
-        });
+      // タイトル（最大2行、収まらない分は…で省略）
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "900 52px 'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif";
+      const titleLines = wrapText(ctx, book.title || "無題", W - padX * 2, 2);
+      y -= (titleLines.length - 1) * 62;
+      titleLines.forEach((line, i) => {
+        ctx.fillText(line, padX, y + i * 62);
       });
+
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("toBlob failed"));
+      }, "image/png");
     }
 
-    drawCoverArea();
+    if (book.cover) {
+      const img = new Image();
+      img.onload = () => draw(img);
+      img.onerror = () => draw(null);
+      img.src = book.cover;
+    } else {
+      draw(null);
+    }
   });
 }
 
@@ -2382,95 +2341,31 @@ function drawImageCover(ctx, img, x, y, w, h) {
   ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
 }
 
-/** 角丸の矩形パスを作る（塗り・線どちらにも使える） */
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
-/** 五芒星（★）を文字ではなく図形として描く。
- *  フォントに★のグリフが無い環境で豆腐や変な形になってしまうのを避けるため。
- *  cx, cy: 中心座標 / r: 外側の半径 */
-function drawStarShape(ctx, cx, cy, r) {
-  const innerR = r * 0.45;
-  const spikes = 5;
-  let rot = (Math.PI / 2) * 3;
-  const step = Math.PI / spikes;
-
-  ctx.beginPath();
-  ctx.moveTo(cx, cy - r);
-  for (let i = 0; i < spikes; i++) {
-    let x = cx + Math.cos(rot) * r;
-    let y = cy + Math.sin(rot) * r;
-    ctx.lineTo(x, y);
-    rot += step;
-
-    x = cx + Math.cos(rot) * innerR;
-    y = cy + Math.sin(rot) * innerR;
-    ctx.lineTo(x, y);
-    rot += step;
-  }
-  ctx.lineTo(cx, cy - r);
-  ctx.closePath();
-  ctx.fill();
-}
-
-/** 開いた本のアイコンを簡単な図形で描く（アプリのロゴと同じモチーフ）。
- *  x, y: 左上あたりの基準座標 / size: だいたいの一辺の大きさ */
-function drawBookIconShape(ctx, x, y, size) {
-  const w = size, h = size * 0.62;
-  const cx = x + w / 2;
-  const topY = y;
-  const botY = y + h;
-
-  ctx.beginPath();
-  ctx.moveTo(cx, topY + h * 0.12);
-  ctx.quadraticCurveTo(cx - w * 0.1, topY, x, topY + h * 0.05);
-  ctx.lineTo(x, botY - h * 0.08);
-  ctx.quadraticCurveTo(cx - w * 0.1, botY - h * 0.02, cx, botY);
-  ctx.quadraticCurveTo(cx + w * 0.1, botY - h * 0.02, x + w, botY - h * 0.08);
-  ctx.lineTo(x + w, topY + h * 0.05);
-  ctx.quadraticCurveTo(cx + w * 0.1, topY, cx, topY + h * 0.12);
-  ctx.closePath();
-  ctx.fill();
-}
-
-/** 指定幅で自動改行しながらテキストを描画する（最大行数を超えたら…で省略）。
- *  戻り値は描画し終えたあとのy座標（次の要素をこの下に続けて配置できる） */
-function wrapFillText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 3) {
+/** 指定幅に収まるように改行した行の配列を返す（最大行数を超えたら最後を…にする） */
+function wrapText(ctx, text, maxWidth, maxLines) {
   const chars = Array.from(text || "");
+  const lines = [];
   let line = "";
-  let lines = [];
   for (const ch of chars) {
     const test = line + ch;
     if (ctx.measureText(test).width > maxWidth && line) {
       lines.push(line);
       line = ch;
-      if (lines.length === maxLines - 1) break;
+      if (lines.length === maxLines) break;
     } else {
       line = test;
     }
   }
-  if (line) lines.push(line);
-  // 省略された分があれば最後の行を…で終わらせる
-  const consumedChars = lines.join("").length;
-  if (consumedChars < chars.length && lines.length === maxLines) {
-    let last = lines[lines.length - 1];
+  if (lines.length < maxLines && line) lines.push(line);
+  const consumed = lines.join("").length;
+  if (consumed < chars.length) {
+    let last = lines[lines.length - 1] || "";
     while (ctx.measureText(last + "…").width > maxWidth && last.length > 0) {
       last = last.slice(0, -1);
     }
     lines[lines.length - 1] = last + "…";
   }
-
-  lines.forEach((l, i) => {
-    ctx.fillText(l, x, y + i * lineHeight);
-  });
-  return y + lines.length * lineHeight;
+  return lines.length ? lines : ["無題"];
 }
 
 function buildShareText(book) {
