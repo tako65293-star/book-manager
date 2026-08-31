@@ -43,6 +43,25 @@
   --shadow-card: 0 6px 18px rgba(0,0,0,0.35);
 }
 
+/* ライトテーマ（<html data-theme="light">のときに適用） */
+:root[data-theme="light"]{
+  --bg:            #f6f4ee;
+  --bg-elevated:   #ffffff;
+  --surface:       #edeae1;
+  --surface-hover: #e3ded0;
+  --border:        #ddd6c6;
+
+  --text:          #201e19;
+  --text-muted:    #6d6a5e;
+
+  --accent:        #c9822a;
+  --accent-soft:   #c9822a2e;
+  --accent-2:      #3f8c86;
+  --danger:        #c4404a;
+
+  --shadow-card: 0 6px 18px rgba(30,25,10,0.12);
+}
+
 *{ box-sizing: border-box; }
 
 img{ max-width: 100%; height: auto; }
@@ -151,7 +170,9 @@ body.is-authed #appRoot[hidden]{ display: block; }
   cursor: pointer;
 }
 .logout-btn:hover{ border-color: var(--accent); color: var(--text); }
-.stats-btn{ order: 98; margin-left: auto; }
+#randomPickBtn{ order: 96; margin-left: auto; }
+#themeToggleBtn{ order: 97; }
+#statsBtn{ order: 98; }
 
 /* =========================================================
    ヘッダー
@@ -986,7 +1007,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
     <button class="seg-btn" data-view="galaxy" role="tab">作者マップ</button>
   </div>
 
-  <button id="statsBtn" class="logout-btn stats-btn" title="統計" type="button">📊 統計</button>
+  <button id="randomPickBtn" class="logout-btn" title="積読からランダムに1冊" type="button">🎲 積読ガチャ</button>
+  <button id="themeToggleBtn" class="logout-btn" title="テーマ切り替え" type="button">🌙</button>
+  <button id="statsBtn" class="logout-btn" title="統計" type="button">📊 統計</button>
 </header>
 
 <!-- ============ メインコンテンツ（フィルター行も一緒にスクロールする） ============ -->
@@ -2540,6 +2563,39 @@ document.getElementById("statsClose").addEventListener("click", () => {
 statsModal.addEventListener("click", (e) => {
   if (e.target === statsModal) statsModal.hidden = true;
 });
+
+/* =========================================================
+   積読ガチャ（積読の中からランダムに1冊を開く）
+========================================================= */
+document.getElementById("randomPickBtn").addEventListener("click", () => {
+  const unread = state.books.filter((b) => (b.status || "read") === "unread");
+  if (unread.length === 0) {
+    showToast("積読の本がありません");
+    return;
+  }
+  const pick = unread[Math.floor(Math.random() * unread.length)];
+  openDetail(pick.id);
+});
+
+/* =========================================================
+   ダーク / ライトテーマ切り替え
+========================================================= */
+const THEME_STORAGE_KEY = "bookManagerTheme";
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  document.getElementById("themeToggleBtn").textContent = theme === "light" ? "☀️" : "🌙";
+}
+function initTheme() {
+  const saved = localStorage.getItem(THEME_STORAGE_KEY);
+  applyTheme(saved === "light" ? "light" : "dark");
+}
+document.getElementById("themeToggleBtn").addEventListener("click", () => {
+  const current = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+  const next = current === "light" ? "dark" : "light";
+  localStorage.setItem(THEME_STORAGE_KEY, next);
+  applyTheme(next);
+});
+initTheme();
 
 
 document.getElementById("detailEditBtn").addEventListener("click", () => {
