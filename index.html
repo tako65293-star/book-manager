@@ -339,6 +339,49 @@ main{ padding: calc(28px + var(--header-height, 76px)) 28px 28px; max-width: 128
 .card-stars .star{ color: var(--border); }
 .card-stars .star.is-filled{ color: var(--accent); }
 
+/* 読書状況バッジ（積読・読書中・読了） */
+.status-badge{
+  display:inline-flex; align-items:center; gap:5px;
+  font-size: 11.5px; font-weight: 600;
+  padding: 3px 10px; border-radius: 999px;
+  white-space: nowrap;
+}
+.status-badge.status-unread{ background: rgba(154,161,175,.16); color:#b9bfca; }
+.status-badge.status-reading{ background: rgba(95,184,179,.16); color:#5fb8b3; }
+.status-badge.status-read{ background: rgba(232,163,61,.16); color: var(--accent); }
+
+.card-status{ position:absolute; top:10px; left:10px; z-index:1; }
+.card-status .status-badge{ box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+
+/* 読書状況フィルター（ヘッダー下） */
+.status-filter{
+  display:flex; gap:8px; flex-wrap:wrap;
+  padding: 0 28px 16px;
+  max-width: 1280px; margin: 0 auto;
+}
+.status-filter .status-filter-btn{
+  border:1px solid var(--border); background: var(--surface);
+  color: var(--text-muted); font-size: 13px; font-weight:600;
+  padding: 6px 14px; border-radius: 999px; cursor:pointer;
+}
+.status-filter .status-filter-btn.is-active{
+  background: var(--accent); border-color: var(--accent); color:#1a1305;
+}
+@media (max-width: 640px){
+  .status-filter{ padding: 0 16px 14px; }
+}
+
+/* 編集モーダル内の読書状況セレクタ */
+.status-select{ display:flex; gap:8px; }
+.status-select .status-opt{
+  flex:1; border:1px solid var(--border); background: var(--surface);
+  color: var(--text-muted); font-size: 14px; font-weight:600;
+  padding: 10px 0; border-radius: 10px; cursor:pointer; text-align:center;
+}
+.status-select .status-opt.is-active{
+  background: var(--accent); border-color: var(--accent); color:#1a1305;
+}
+
 /* しおり（ribbon）バッジ：signature element */
 .ribbon{
   position:absolute;
@@ -902,6 +945,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
   </div>
 </header>
 
+<!-- 読書状況フィルター -->
+<div class="status-filter" id="statusFilter">
+  <button class="status-filter-btn is-active" data-status="all">すべて</button>
+  <button class="status-filter-btn" data-status="unread">積読</button>
+  <button class="status-filter-btn" data-status="reading">読書中</button>
+  <button class="status-filter-btn" data-status="read">読了</button>
+</div>
+
 <!-- ============ メインコンテンツ ============ -->
 <main id="mainContent">
 
@@ -917,6 +968,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
           <th>タイトル</th>
           <th>作者</th>
           <th>評価</th>
+          <th>状況</th>
           <th>追加日</th>
           <th class="col-actions"></th>
         </tr>
@@ -1015,6 +1067,15 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
           </div>
         </div>
 
+        <div class="field">
+          <span class="field-label">読書状況</span>
+          <div class="status-select" id="statusSelect" data-value="read">
+            <button type="button" class="status-opt" data-value="unread">積読</button>
+            <button type="button" class="status-opt" data-value="reading">読書中</button>
+            <button type="button" class="status-opt" data-value="read">読了</button>
+          </div>
+        </div>
+
         <label class="field">
           <span class="field-label">関連URL（販売ページ・レビューなど）</span>
           <input type="url" id="inputUrl" placeholder="https://…">
@@ -1056,6 +1117,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
         <p class="detail-date" id="detailDate"></p>
         <h2 id="detailTitle"></h2>
         <p class="detail-author" id="detailAuthor"></p>
+        <div id="detailStatus"></div>
         <div class="star-rating readonly" id="detailStars"></div>
         <a id="detailUrl" class="detail-url" target="_blank" rel="noopener">🔗 関連リンクを開く</a>
         <div class="detail-tags" id="detailTags"></div>
@@ -1422,6 +1484,7 @@ const state = {
   currentView: "grid", // grid / list / shelf / galaxy
   shelfMode: "author", // author / mixed（本棚表示の並べ方）
   searchTerm: "",
+  statusFilter: "all", // all / unread / reading / read
   editingId: null,     // モーダルで編集中の本のID（新規追加時はnull）
   pendingCoverData: null, // モーダルで貼り付けた画像（base64）
   shelfSettings: { ...SHELF_SETTINGS_DEFAULTS },
@@ -1482,8 +1545,12 @@ function formatTagsForInput(tags) {
 ========================================================= */
 function getVisibleBooks() {
   const term = state.searchTerm.trim().toLowerCase();
-  if (!term) return state.books;
-  return state.books.filter((b) => {
+  let books = state.books;
+  if (state.statusFilter !== "all") {
+    books = books.filter((b) => (b.status || "read") === state.statusFilter);
+  }
+  if (!term) return books;
+  return books.filter((b) => {
     const haystack = [
       b.title || "",
       b.author || "",
@@ -1494,6 +1561,20 @@ function getVisibleBooks() {
       .toLowerCase();
     return haystack.includes(term);
   });
+}
+
+/* =========================================================
+   読書状況（積読・読書中・読了）まわりの共通処理
+========================================================= */
+const STATUS_LABELS = { unread: "積読", reading: "読書中", read: "読了" };
+function statusLabel(status) {
+  return STATUS_LABELS[status] || STATUS_LABELS.read;
+}
+function statusClass(status) {
+  return "status-" + (STATUS_LABELS[status] ? status : "read");
+}
+function statusBadgeHTML(status) {
+  return `<span class="status-badge ${statusClass(status)}">${statusLabel(status)}</span>`;
 }
 
 /* =========================================================
@@ -1551,13 +1632,14 @@ function renderGrid(books) {
     card.addEventListener("click", () => openDetail(book.id));
 
     const ribbon = book.rating > 0 ? `<div class="ribbon">${book.rating}</div>` : "";
+    const statusPart = `<div class="card-status">${statusBadgeHTML(book.status)}</div>`;
     const coverPart = book.cover
       ? `<img class="book-cover-img" src="${book.cover}" alt="${escapeHTML(book.title)}の表紙">`
       : `<div class="book-cover-fallback">${escapeHTML(book.title || "無題")}</div>`;
 
     card.innerHTML = `
       ${ribbon}
-      <div class="book-cover-wrap">${coverPart}</div>
+      <div class="book-cover-wrap">${statusPart}${coverPart}</div>
       <div class="book-card-body">
         <p class="book-card-title">${escapeHTML(book.title || "無題")}</p>
         <p class="book-card-author">${escapeHTML(book.author || "作者不明")}</p>
@@ -1610,6 +1692,7 @@ function renderList(books) {
         <td>${escapeHTML(book.title || "無題")}</td>
         <td>${escapeHTML(book.author || "—")}</td>
         <td><span class="card-stars">${starsHTML(book.rating)}</span></td>
+        <td>${statusBadgeHTML(book.status)}</td>
         <td>${formatDateJP(book.dateAdded)}</td>
         <td></td>
       `;
@@ -1912,6 +1995,19 @@ document.getElementById("searchInput").addEventListener("input", (e) => {
 });
 
 /* =========================================================
+   読書状況フィルター
+========================================================= */
+document.getElementById("statusFilter").addEventListener("click", (e) => {
+  const btn = e.target.closest(".status-filter-btn");
+  if (!btn) return;
+  state.statusFilter = btn.dataset.status;
+  document.querySelectorAll("#statusFilter .status-filter-btn").forEach((b) => {
+    b.classList.toggle("is-active", b === btn);
+  });
+  renderAll();
+});
+
+/* =========================================================
    追加・編集モーダル
 ========================================================= */
 const bookModal = document.getElementById("bookModal");
@@ -1931,6 +2027,7 @@ function openAddModal() {
   document.getElementById("inputMemo").value = "";
   document.getElementById("inputDate").value = todayISO(); // 自動で今日の日付
   setStarValue(0);
+  setStatusValue("read");
   setCoverPreview(null);
   document.getElementById("deleteBookBtn").hidden = true;
   bookModal.hidden = false;
@@ -1950,6 +2047,7 @@ function openEditModal(id) {
   document.getElementById("inputMemo").value = book.memo || "";
   document.getElementById("inputDate").value = book.dateAdded || todayISO();
   setStarValue(book.rating || 0);
+  setStatusValue(book.status || "read");
   setCoverPreview(book.cover || null);
   document.getElementById("deleteBookBtn").hidden = false;
   bookModal.hidden = false;
@@ -1999,7 +2097,7 @@ function compressCoverImage(dataURL) {
         reject(new Error("画像のサイズが不正です"));
         return;
       }
-      const MAX_EDGE = 1200;
+      const MAX_EDGE = 1600;
       let { naturalWidth: w, naturalHeight: h } = img;
       if (w > MAX_EDGE || h > MAX_EDGE) {
         if (w >= h) {
@@ -2021,7 +2119,7 @@ function compressCoverImage(dataURL) {
       ctx.getImageData(0, 0, 1, 1);
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          resolve(canvas.toDataURL("image/jpeg", 0.85));
+          resolve(canvas.toDataURL("image/jpeg", 0.92));
         });
       });
     };
@@ -2072,6 +2170,18 @@ starRatingEl.querySelectorAll(".star").forEach((star) => {
 });
 document.getElementById("starClear").addEventListener("click", () => setStarValue(0));
 
+/* ---- 読書状況（積読・読書中・読了） ---- */
+const statusSelectEl = document.getElementById("statusSelect");
+function setStatusValue(value) {
+  statusSelectEl.dataset.value = value;
+  statusSelectEl.querySelectorAll(".status-opt").forEach((btn) => {
+    btn.classList.toggle("is-active", btn.dataset.value === value);
+  });
+}
+statusSelectEl.querySelectorAll(".status-opt").forEach((btn) => {
+  btn.addEventListener("click", () => setStatusValue(btn.dataset.value));
+});
+
 /* ---- 保存 ---- */
 document.getElementById("saveBtn").addEventListener("click", () => {
   const title = document.getElementById("inputTitle").value.trim();
@@ -2090,6 +2200,7 @@ document.getElementById("saveBtn").addEventListener("click", () => {
     tags,
     memo: document.getElementById("inputMemo").value.trim(),
     rating: Number(starRatingEl.dataset.value) || 0,
+    status: statusSelectEl.dataset.value || "read",
     dateAdded: document.getElementById("inputDate").value || todayISO(),
     cover: state.pendingCoverData || null,
   };
@@ -2143,6 +2254,7 @@ function openDetail(id) {
   document.getElementById("detailAuthor").textContent = book.author || "作者不明";
   document.getElementById("detailDate").textContent = "追加日：" + formatDateJP(book.dateAdded);
   document.getElementById("detailStars").innerHTML = starsHTML(book.rating);
+  document.getElementById("detailStatus").innerHTML = statusBadgeHTML(book.status);
   document.getElementById("detailMemo").textContent = book.memo || "（メモはまだありません）";
 
   const urlEl = document.getElementById("detailUrl");
