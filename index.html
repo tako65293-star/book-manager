@@ -367,8 +367,18 @@ main{ padding: calc(28px + var(--header-height, 76px)) 28px 28px; max-width: 128
 .status-filter .status-filter-btn.is-active{
   background: var(--accent); border-color: var(--accent); color:#1a1305;
 }
+.sort-select{
+  margin-left: auto;
+  border:1px solid var(--border); background: var(--surface);
+  color: var(--text); font-size: 13px; font-weight:600;
+  padding: 6px 10px; border-radius: 999px; cursor:pointer;
+}
+.status-filter .status-filter-btn.tag-chip-btn{
+  font-weight: 500;
+}
 @media (max-width: 640px){
   .status-filter{ padding: 0 16px 14px; }
+  .sort-select{ margin-left: 0; }
 }
 
 /* 編集モーダル内の読書状況セレクタ */
@@ -951,7 +961,17 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
   <button class="status-filter-btn" data-status="unread">積読</button>
   <button class="status-filter-btn" data-status="reading">読書中</button>
   <button class="status-filter-btn" data-status="read">読了</button>
+
+  <select id="sortSelect" class="sort-select">
+    <option value="dateDesc">追加日が新しい順</option>
+    <option value="dateAsc">追加日が古い順</option>
+    <option value="titleAsc">タイトル順</option>
+    <option value="ratingDesc">評価が高い順</option>
+  </select>
 </div>
+
+<!-- タグで絞り込み -->
+<div class="status-filter" id="tagFilter"></div>
 
 <!-- ============ メインコンテンツ ============ -->
 <main id="mainContent">
@@ -1485,6 +1505,8 @@ const state = {
   shelfMode: "author", // author / mixed（本棚表示の並べ方）
   searchTerm: "",
   statusFilter: "all", // all / unread / reading / read
+  tagFilter: null,     // 選択中のタグ（nullなら絞り込みなし）
+  sortKey: "dateDesc", // dateDesc / dateAsc / titleAsc / ratingDesc
   editingId: null,     // モーダルで編集中の本のID（新規追加時はnull）
   pendingCoverData: null, // モーダルで貼り付けた画像（base64）
   shelfSettings: { ...SHELF_SETTINGS_DEFAULTS },
@@ -1549,18 +1571,51 @@ function getVisibleBooks() {
   if (state.statusFilter !== "all") {
     books = books.filter((b) => (b.status || "read") === state.statusFilter);
   }
-  if (!term) return books;
-  return books.filter((b) => {
-    const haystack = [
-      b.title || "",
-      b.author || "",
-      (b.tags || []).join(" "),
-      b.memo || "",
-    ]
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(term);
-  });
+  if (state.tagFilter) {
+    books = books.filter((b) => (b.tags || []).includes(state.tagFilter));
+  }
+  if (term) {
+    books = books.filter((b) => {
+      const haystack = [
+        b.title || "",
+        b.author || "",
+        (b.tags || []).join(" "),
+        b.memo || "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(term);
+    });
+  }
+  return sortBooks(books, state.sortKey);
+}
+
+/** 並び替え。元の配列は変更せず、並び替え済みの新しい配列を返す */
+function sortBooks(books, sortKey) {
+  const sorted = books.slice();
+  switch (sortKey) {
+    case "dateAsc":
+      sorted.sort((a, b) => (a.dateAdded || "").localeCompare(b.dateAdded || ""));
+      break;
+    case "titleAsc":
+      sorted.sort((a, b) => (a.title || "").localeCompare(b.title || "", "ja"));
+      break;
+    case "ratingDesc":
+      sorted.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+      break;
+    case "dateDesc":
+    default:
+      sorted.sort((a, b) => (b.dateAdded || "").localeCompare(a.dateAdded || ""));
+      break;
+  }
+  return sorted;
+}
+
+/** 全ての本から使われているタグを重複なく取り出す（絞り込みチップ用） */
+function getAllTags() {
+  const set = new Set();
+  state.books.forEach((b) => (b.tags || []).forEach((t) => set.add(t)));
+  return Array.from(set).sort((a, b) => a.localeCompare(b, "ja"));
 }
 
 /* =========================================================
@@ -1592,6 +1647,7 @@ function starsHTML(rating) {
    描画：全体の入り口
 ========================================================= */
 function renderAll() {
+  renderTagFilter();
   const visible = getVisibleBooks();
   const empty = document.getElementById("emptyState");
   const main = document.getElementById("mainContent");
@@ -1678,10 +1734,7 @@ function renderGrid(books) {
 function renderList(books) {
   const tbody = document.getElementById("listTableBody");
   tbody.innerHTML = "";
-  books
-    .slice()
-    .sort((a, b) => (b.dateAdded || "").localeCompare(a.dateAdded || ""))
-    .forEach((book) => {
+  books.forEach((book) => {
       const tr = document.createElement("tr");
       tr.addEventListener("click", () => openDetail(book.id));
       const thumb = book.cover
@@ -2004,6 +2057,35 @@ document.getElementById("statusFilter").addEventListener("click", (e) => {
   document.querySelectorAll("#statusFilter .status-filter-btn").forEach((b) => {
     b.classList.toggle("is-active", b === btn);
   });
+  renderAll();
+});
+
+document.getElementById("sortSelect").addEventListener("change", (e) => {
+  state.sortKey = e.target.value;
+  renderAll();
+});
+
+/** タグ絞り込みチップを、今存在する本のタグから作り直す */
+function renderTagFilter() {
+  const el = document.getElementById("tagFilter");
+  const tags = getAllTags();
+  if (tags.length === 0) {
+    el.innerHTML = "";
+    return;
+  }
+  el.innerHTML = tags
+    .map(
+      (t) =>
+        `<button class="status-filter-btn tag-chip-btn${state.tagFilter === t ? " is-active" : ""}" data-tag="${escapeHTML(t)}">#${escapeHTML(t)}</button>`
+    )
+    .join("");
+}
+document.getElementById("tagFilter").addEventListener("click", (e) => {
+  const btn = e.target.closest(".tag-chip-btn");
+  if (!btn) return;
+  const tag = btn.dataset.tag;
+  state.tagFilter = state.tagFilter === tag ? null : tag; // 同じタグをもう一度押したら解除
+  renderTagFilter();
   renderAll();
 });
 
