@@ -300,6 +300,60 @@ body.is-authed #appRoot[hidden]{ display: block; }
   color: #1a1305;
   font-weight: 700;
 }
+/* 「今読みたい」タブだけ差し色（読書中バッジと同じ青緑）にして、他のタブと区別する */
+.seg-btn-want{ color: var(--accent-2); }
+.seg-btn-want.is-active{ background: var(--accent-2); color: #08211f; }
+
+/* =========================================================
+   今読みたい本（専用ビュー）
+========================================================= */
+.want-page-head{ margin-bottom: 20px; }
+.want-page-head h2{ font-family: var(--font-display); font-weight: 900; font-size: 18px; margin: 0 0 4px; }
+.want-page-head p{ color: var(--text-muted); font-size: 13px; margin: 0; }
+.want-grid{
+  display:flex;
+  flex-wrap: wrap;
+  gap: 34px 24px;
+}
+.want-item{ width: 150px; }
+.want-item .book-card{
+  box-shadow: 0 10px 22px rgba(95,184,179,.22), var(--shadow-card);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.want-item .book-card:hover{
+  transform: translateY(-6px) rotate(0deg) !important;
+  box-shadow: 0 14px 26px rgba(0,0,0,0.45);
+}
+.want-remove{
+  position:absolute; top:-8px; right:-8px; z-index:2;
+  width:26px; height:26px; border-radius:50%;
+  background: var(--surface); border:1px solid var(--border); color: var(--text-muted);
+  font-size:12px; display:flex; align-items:center; justify-content:center; cursor:pointer;
+  opacity:0; transition: opacity .15s, color .15s, border-color .15s;
+}
+.want-item .book-card:hover .want-remove{ opacity:1; }
+.want-remove:hover{ color: var(--danger); border-color: var(--danger); }
+.want-empty-hint{
+  color: var(--text-muted); font-size: 13px; line-height:1.7;
+  background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius-m);
+  padding: 16px 18px; max-width: 480px;
+}
+
+/* ---- モーダル内「今読みたい本にする」トグル ---- */
+.want-toggle-row{ display:flex; align-items:center; gap:10px; font-size:13.5px; color: var(--text); cursor:pointer; padding-top: 8px; }
+.switch{ position:relative; width:38px; height:22px; flex-shrink:0; }
+.switch input{ position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer; }
+.switch-track{
+  position:absolute; inset:0; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 999px; transition: background .15s, border-color .15s; pointer-events:none;
+}
+.switch-thumb{
+  position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%;
+  background: var(--text-muted); transition: transform .15s, background .15s;
+}
+.switch input:checked + .switch-track{ background: var(--accent-soft); border-color: var(--accent-2); }
+.switch input:checked + .switch-track .switch-thumb{ transform: translateX(16px); background: var(--accent-2); }
+.switch input:focus-visible + .switch-track{ outline: 2px solid var(--accent-2); outline-offset: 2px; }
 
 /* =========================================================
    メイン / ビュー切り替え
@@ -1044,6 +1098,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
     <button class="seg-btn" data-view="list" role="tab">リスト</button>
     <button class="seg-btn" data-view="shelf" role="tab">本棚</button>
     <button class="seg-btn" data-view="galaxy" role="tab">作者マップ</button>
+    <button class="seg-btn seg-btn-want" data-view="want" role="tab">★ 今読みたい</button>
   </div>
 
   <!-- たまにしか使わない操作はここにまとめる -->
@@ -1142,6 +1197,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
   <!-- 作者マップ表示（作者を中心に本が円状に浮かぶ） -->
   <section id="view-galaxy" class="view-panel"></section>
 
+  <!-- 今読みたい本（積読の中から次に読むと決めた本だけを、棚から抜き出したように表示） -->
+  <section id="view-want" class="view-panel">
+    <div class="want-page-head">
+      <h2>今読みたい本</h2>
+      <p>「今読みたい」にした本だけを並べています。表紙をクリックすると詳細を開けます。</p>
+    </div>
+    <div id="wantGrid" class="want-grid"></div>
+    <div id="wantEmptyHint" class="want-empty-hint" hidden>
+      まだ「今読みたい」本が登録されていません。本の編集画面で「今読みたい本にする」をオンにすると、ここに並びます。
+    </div>
+  </section>
+
   <!-- 何もない時 -->
   <div id="emptyState" class="empty-state" hidden>
     <div class="empty-illustration">
@@ -1207,6 +1274,17 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
             <button type="button" class="status-opt" data-value="reading">読書中</button>
             <button type="button" class="status-opt" data-value="read">読了</button>
           </div>
+        </div>
+
+        <div class="field">
+          <span class="field-label">&nbsp;</span>
+          <label class="want-toggle-row" for="inputWantToRead">
+            <span class="switch">
+              <input type="checkbox" id="inputWantToRead">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </span>
+            今読みたい本にする
+          </label>
         </div>
 
         <label class="field">
@@ -1623,7 +1701,7 @@ const SHELF_SETTINGS_DEFAULTS = {
 /** アプリ全体の状態 */
 const state = {
   books: [],          // 保存されている本の配列
-  currentView: "grid", // grid / list / shelf / galaxy
+  currentView: "grid", // grid / list / shelf / galaxy / want
   shelfMode: "author", // author / mixed（本棚表示の並べ方）
   searchTerm: "",
   statusFilter: "all", // all / unread / reading / read
@@ -1796,6 +1874,13 @@ function renderAll() {
   renderList(visible);
   renderShelf(visible);
   renderGalaxy(visible);
+  renderWant();
+
+  // 「今読みたい」タブは既にそれ自体が絞り込み済みの一覧なので、
+  // 積読/読書中/読了フィルターやタグ絞り込みの行は隠す
+  const isWantView = state.currentView === "want";
+  document.getElementById("statusFilter").style.display = isWantView ? "none" : "";
+  document.getElementById("tagFilter").style.display = isWantView ? "none" : "";
 }
 
 /* ---------------------------------------------------------
@@ -2071,6 +2156,70 @@ function groupByAuthor(books) {
   return groups;
 }
 
+/* ---------------------------------------------------------
+   5) 今読みたい本（積読の中から次に読むと決めた本を、
+      本棚から一冊抜き出したように少し傾けて並べる）
+--------------------------------------------------------- */
+function getWantBooks() {
+  const term = state.searchTerm.trim().toLowerCase();
+  let books = state.books.filter((b) => b.wantToRead);
+  if (term) {
+    books = books.filter((b) => {
+      const haystack = [b.title || "", b.author || "", (b.tags || []).join(" ")].join(" ").toLowerCase();
+      return haystack.includes(term);
+    });
+  }
+  return sortBooks(books, state.sortKey);
+}
+
+function renderWant() {
+  const grid = document.getElementById("wantGrid");
+  const hint = document.getElementById("wantEmptyHint");
+  const books = getWantBooks();
+  grid.innerHTML = "";
+
+  if (books.length === 0) {
+    hint.hidden = false;
+    return;
+  }
+  hint.hidden = true;
+
+  books.forEach((book) => {
+    const item = document.createElement("div");
+    item.className = "want-item";
+
+    const card = document.createElement("div");
+    card.className = "book-card";
+    // 同じ本は毎回同じ角度になるよう、IDから決定的に-4〜+4度の範囲で傾ける
+    const angle = (hashString((book.id || book.title || "") + "-want-tilt") % 9) - 4;
+    card.style.transform = `rotate(${angle}deg)`;
+    card.addEventListener("click", () => openDetail(book.id));
+
+    const coverPart = book.cover
+      ? `<img class="book-cover-img" src="${book.cover}" alt="${escapeHTML(book.title)}の表紙">`
+      : `<div class="book-cover-fallback">${escapeHTML(book.title || "無題")}</div>`;
+
+    card.innerHTML = `
+      <button class="want-remove" title="今読みたいから外す">✕</button>
+      <div class="book-cover-wrap">${coverPart}</div>
+      <div class="book-card-body">
+        <p class="book-card-title">${escapeHTML(book.title || "無題")}</p>
+        <p class="book-card-author">${escapeHTML(book.author || "作者不明")}</p>
+      </div>
+    `;
+
+    card.querySelector(".want-remove").addEventListener("click", (e) => {
+      e.stopPropagation();
+      book.wantToRead = false;
+      saveBookToCloud(book);
+      renderAll();
+    });
+
+    item.appendChild(card);
+    grid.appendChild(item);
+  });
+}
+
 /* 文字列から安定した色を生成（背表紙の色分け用）
    臙脂・レンガ・琥珀・からし・焦茶など、落ち着いた暖色系のパレットに限定して
    まとまりを出しつつ、色相・彩度・明度を少しずつ揺らして単調になりすぎないようにする */
@@ -2230,6 +2379,7 @@ function openAddModal() {
   document.getElementById("inputTags").value = "";
   document.getElementById("inputMemo").value = "";
   document.getElementById("inputDate").value = todayISO(); // 自動で今日の日付
+  document.getElementById("inputWantToRead").checked = false;
   setStarValue(0);
   setStatusValue("read");
   setCoverPreview(null);
@@ -2250,6 +2400,7 @@ function openEditModal(id) {
   document.getElementById("inputTags").value = formatTagsForInput(book.tags);
   document.getElementById("inputMemo").value = book.memo || "";
   document.getElementById("inputDate").value = book.dateAdded || todayISO();
+  document.getElementById("inputWantToRead").checked = !!book.wantToRead;
   setStarValue(book.rating || 0);
   setStatusValue(book.status || "read");
   setCoverPreview(book.cover || null);
@@ -2407,6 +2558,7 @@ document.getElementById("saveBtn").addEventListener("click", () => {
     status: statusSelectEl.dataset.value || "read",
     dateAdded: document.getElementById("inputDate").value || todayISO(),
     cover: state.pendingCoverData || null,
+    wantToRead: document.getElementById("inputWantToRead").checked,
   };
 
   let savedBook;
